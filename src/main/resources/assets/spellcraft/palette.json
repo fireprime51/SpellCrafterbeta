@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "Единственный источник палитры мода. Файл лежит в resources и поэтому",
+    "попадает в jar: варианты переключаются в игре клавишей F9.",
+    "com.github.fireprime5.spellcraft.palette.Palette держит значения по умолчанию,",
+    "PaletteTest проверяет, что они не разошлись. Правь json, потом класс Palette."
+  ],
+  "base": {
+    "bg": "#0A0D13",
+    "panel": "#161B24",
+    "panelDark": "#0F131A",
+    "panelLight": "#222834",
+    "border": "#38424F",
+    "borderLight": "#66748A",
+    "grid": "#232B36",
+    "accent": "#6FE3FF",
+    "accentDim": "#2C7A93",
+    "text": "#E6EEF6",
+    "textDim": "#9DAEC0",
+    "warn": "#FFC266",
+    "error": "#FF5C9E",
+    "ok": "#6BE3A8",
+    "slotBg": "#1B202A"
+  },
+  "category": {
+    "numbers": "#FFDC96",
+    "entities": "#FFC266",
+    "actions": "#FFA352",
+    "logic": "#F8834C",
+    "network": "#E86A52"
+  },
+  "port": {
+    "number": "#7FD4F5",
+    "entity": "#6FE3C0",
+    "point": "#5FB8F0",
+    "vector": "#8C9BF0",
+    "item": "#A8D8E8",
+    "any": "#B4C4D4"
+  },
+  "variants": {
+    "current": {
+      "label": "Тёплая шкала",
+      "categories": {
+        "numbers": "#FFDC96",
+        "entities": "#FFC266",
+        "actions": "#FFA352",
+        "logic": "#F8834C",
+        "network": "#E86A52"
+      },
+      "error": "#FF5C9E"
+    },
+    "magenta": {
+      "label": "Маджента",
+      "categories": {
+        "numbers": "#FF7BD5",
+        "entities": "#FF57C4",
+        "actions": "#E44FE0",
+        "logic": "#B44BF0",
+        "network": "#7C5BFF"
+      },
+      "error": "#FF9A3D"
+    },
+    "violet": {
+      "label": "Фиолет",
+      "categories": {
+        "numbers": "#E6C7FF",
+        "entities": "#C9A6FF",
+        "actions": "#A985FF",
+        "logic": "#8A63F5",
+        "network": "#6B4BE0"
+      },
+      "error": "#FF4D8A"
+    },
+    "neonmix": {
+      "label": "Неон: циан+фиолет",
+      "categories": {
+        "numbers": "#7CFFEA",
+        "entities": "#59C8FF",
+        "actions": "#A97CFF",
+        "logic": "#D45BFF",
+        "network": "#FF4FD8"
+      },
+      "error": "#FF2E6E"
+    },
+    "twotone": {
+      "label": "Данные/эффекты",
+      "categories": {
+        "numbers": "#FFD98A",
+        "entities": "#FFB85C",
+        "actions": "#A97CFF",
+        "logic": "#D45BFF",
+        "network": "#6B4BE0"
+      },
+      "error": "#FF3D6E"
+    },
+    "deeppurple": {
+      "label": "Тёмный фиолет",
+      "categories": {
+        "numbers": "#B98CFF",
+        "entities": "#A97CFF",
+        "actions": "#9C6BFF",
+        "logic": "#7A4FE0",
+        "network": "#5B3AC8"
+      },
+      "error": "#FF4D8A"
+    },
+    "dirtyneon": {
+      "label": "Выцветший неон",
+      "categories": {
+        "numbers": "#C0A8D8",
+        "entities": "#8FE8D8",
+        "actions": "#FF8FB0",
+        "logic": "#C77DFF",
+        "network": "#7A6BFF"
+      },
+      "error": "#FFC24D"
+    },
+    "acid": {
+      "label": "Кислотный",
+      "categories": {
+        "numbers": "#9BFF4D",
+        "entities": "#35E0D0",
+        "actions": "#FF4FD8",
+        "logic": "#C77DFF",
+        "network": "#6B4BE0"
+      },
+      "error": "#FF2020"
+    }
+  }
+}
