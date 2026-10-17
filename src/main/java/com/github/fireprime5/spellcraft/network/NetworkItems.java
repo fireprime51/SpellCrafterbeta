@@ -40,7 +40,11 @@ public final class NetworkItems {
     }
 
     private static String имя(NetworkLine линия) {
-        return линия.kind() == LineKind.ABYSS ? "abyss_pipe"
+        if (линия.kind() == LineKind.ABYSS) {
+            return "abyss_pipe";
+        }
+        // труба одна на все жидкости, поэтому и предмета на каждую не заводим
+        return линия.kind() == LineKind.FLUID ? "fluid_pipe"
                 : "wire_" + линия.color().getSerializedName();
     }
 

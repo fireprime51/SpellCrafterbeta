@@ -9,6 +9,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
@@ -24,6 +25,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -115,6 +117,21 @@ public class NetworkBlockEntity extends BlockEntity {
         return null;
     }
 
+    /**
+     * Жидкость наружу для труб и вёдер других модов.
+     *
+     * <p>Отдаётся первая жидкостная линия: блок сети для чужого мода — это одно
+     * хранилище, а не три, иначе каждый сосед тянул бы из всех подряд.
+     */
+    public IFluidHandler fluidStorage() {
+        for (NetworkLine линия : lines.all()) {
+            if (линия != null && линия.kind() == LineKind.FLUID) {
+                return линия;
+            }
+        }
+        return null;
+    }
+
     // --- соединения -------------------------------------------------------
 
     /**
@@ -169,6 +186,15 @@ public class NetworkBlockEntity extends BlockEntity {
                         && слотыСовпали(level, pos, d, линия));
             }
             изменилось |= было != линия.mask();
+        }
+        for (NetworkLine линия : lines.all()) {
+            if (линия == null || линия.kind() != LineKind.FLUID) {
+                continue;
+            }
+            // труба узнаёт жидкость от соседей: предмет один на все жидкости
+            ResourceLocation было = линия.fluid();
+            изменилось |= !java.util.Objects.equals(было,
+                    NetworkFluids.узнатьЖидкость(level, pos, линия));
         }
         if (изменилось) {
             sync(level, pos);
@@ -264,7 +290,7 @@ public class NetworkBlockEntity extends BlockEntity {
      * этот вид ресурса, и — для энергии — любой узел сети: провод питает машину
      * независимо от её цвета.
      */
-    public static boolean connects(LevelReader level, BlockPos pos, Direction d,
+    public static boolean connects(Level level, BlockPos pos, Direction d,
                                    LineKind kind, DyeColor color) {
         BlockPos сосед = pos.relative(d);
         var блок = level.getBlockState(сосед).getBlock();
@@ -285,6 +311,11 @@ public class NetworkBlockEntity extends BlockEntity {
         }
         if (kind == LineKind.ENERGY) {
             return блок instanceof NetworkNode;
+        }
+        if (kind == LineKind.FLUID) {
+            // труба стыкуется с тем, что налито: с хранилищем и с источником в
+            // мире. Пустой бак и пустой источник — не повод тянуть трубу
+            return NetworkFluids.естьЧемНаполнить(level, pos, d);
         }
         return level.getBlockEntity(сосед) instanceof AbyssPort;
     }
@@ -349,6 +380,10 @@ public class NetworkBlockEntity extends BlockEntity {
     public void work(Level level, BlockPos pos) {
         for (NetworkLine линия : lines.all()) {
             if (линия == null) {
+                continue;
+            }
+            if (линия.kind() == LineKind.FLUID) {
+                NetworkFluids.transfer(level, pos, линия);
                 continue;
             }
             if (линия.kind() == LineKind.ABYSS) {

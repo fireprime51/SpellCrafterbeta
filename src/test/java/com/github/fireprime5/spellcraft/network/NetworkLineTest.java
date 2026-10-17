@@ -2,6 +2,9 @@ package com.github.fireprime5.spellcraft.network;
 
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +31,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * в виде клубка: три линии сливаются в одну точку, и понять, где чья, нельзя.
  */
 class NetworkLineTest {
+
+    /** Вода и лава как идентификаторы: стек жидкости без мира не собирается. */
+    private static final net.minecraft.resources.ResourceLocation ВОДА =
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("minecraft", "water");
+    private static final net.minecraft.resources.ResourceLocation ЛАВА =
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("minecraft", "lava");
 
     private static final Set<Direction> ВСЕ = EnumSet.allOf(Direction.class);
 
@@ -593,5 +602,153 @@ class NetworkLineTest {
         assertEquals(DyeColor.RED, линии.line(2).color());
         assertEquals(DyeColor.BLUE, линии.line(1).color(), "синяя осталась на месте");
         assertEquals(2, линии.count());
+    }
+
+    /**
+     * Труба не набирает чужую жидкость в полную.
+     *
+     * <p>Труба одна на все жидкости, и вид узнаёт от соседа, но наполниться
+     * должна только тем, с чем связана: вода и лава в одной линии — это две
+     * разные сети в одном блоке.
+     */
+    @Test
+    void трубаНеБерётЧужуюЖидкость() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        assertEquals(1000, NetworkFluids.fill(труба, ВОДА, 1000, false),
+                "пустая труба без жидкости должна принять воду и запомнить её");
+        assertEquals(ВОДА, труба.fluid());
+        assertEquals(0, NetworkFluids.fill(труба, ЛАВА, 1000, false),
+                "лава в трубу с водой не льётся");
+        assertEquals(1000, труба.stored(), "запас не тронут");
+    }
+
+    /** В трубу влезает ровно ёмкость, лишнее остаётся у донора. */
+    @Test
+    void трубаНеПереполняется() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        NetworkFluids.fill(труба, ВОДА, NetworkFluids.CAPACITY, false);
+        assertEquals(NetworkFluids.CAPACITY, труба.stored());
+        assertEquals(0, NetworkFluids.fill(труба, ВОДА, 100, false),
+                "полная труба не берёт больше");
+        assertEquals(0, NetworkFluids.fill(труба, ВОДА, 100, true),
+                "симуляция тоже не должна обещать заливку в полную трубу");
+    }
+
+    /** Симуляция ничего не меняет: ею пользуются вёдра и чужие моды. */
+    @Test
+    void симуляцияНеМеняетТрубу() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        assertEquals(1000, NetworkFluids.fill(труба, ВОДА, 1000, true));
+        assertEquals(0, труба.stored(), "симуляция не должна наполнять трубу");
+        NetworkFluids.fill(труба, ВОДА, 1000, false);
+        assertEquals(500, NetworkFluids.чтоМожноСлить(труба, 500, true),
+                "симуляция обязана сказать, сколько слилось бы");
+        assertEquals(1000, труба.stored(), "симуляция слива не должна уменьшать запас");
+        assertEquals(500, NetworkFluids.чтоМожноСлить(труба, 500, false),
+                "настоящий слив отдаёт столько, сколько просили");
+        assertEquals(500, труба.stored(), "и запас уменьшается на столько же");
+    }
+
+    /** Смена жидкости на непустой трубе запрещена: иначе она исчезнет молча. */
+    @Test
+    void непустаяТрубаНеМеняетЖидкость() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        NetworkFluids.fill(труба, ВОДА, 1000, false);
+        assertEquals(ВОДА, труба.fluid());
+        труба.fluid(ЛАВА);
+        assertEquals(ВОДА, труба.fluid(),
+                "в трубе вода: смена жидкости молча бы её выбросила");
+        труба.stored(0);
+        труба.fluid(ЛАВА);
+        assertEquals(ЛАВА, труба.fluid(),
+                "пустая труба обязана принять другую жидкость");
+    }
+
+    /**
+     * Две трубы стыкуются, если одна ещё не знает, что в ней.
+     *
+     * <p>Иначе труба, поставленная рядом с баком, не соединилась бы с ним до
+     * первого заполнения, а заполниться ей было бы нечем.
+     */
+    @Test
+    void неизвестнаяТрубаСтыкуетсяСИзвестной() {
+        NetworkLine пустая = NetworkLine.emptyFluid();
+        NetworkLine сВодой = NetworkLine.emptyFluid();
+        NetworkFluids.fill(сВодой, ВОДА, 100, false);
+        assertTrue(пустая.sameNetwork(сВодой),
+                "труба, которая ещё не знает жидкости, подходит к любой");
+        NetworkLine сЛавой = NetworkLine.emptyFluid();
+        NetworkFluids.fill(сЛавой, ЛАВА, 100, false);
+        assertFalse(сВодой.sameNetwork(сЛавой),
+                "уже с водой труба больше не подходит к лаве");
+        assertTrue(сВодой.sameNetwork(пустая),
+                "но к ещё пустой трубе вода по-прежнему подходит");
+    }
+
+    /** Жидкость и её заполнение переживают NBT: труба не превращается в пустую. */
+    @Test
+    void жидкостьПереживаетNbt() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        NetworkFluids.fill(труба, ВОДА, 4321, false);
+        NetworkLine после = NetworkLine.load(труба.save(new CompoundTag()));
+        assertEquals(4321, после.stored());
+        assertEquals(ВОДА, после.fluid());
+        assertTrue(NetworkFluids.принимает(после, ВОДА));
+        assertFalse(NetworkFluids.принимает(после, ЛАВА));
+    }
+
+    /** Ступень заливки делит заполнение на четыре части: кэш меша обязан меняться. */
+    @Test
+    void ступеньЗаполненияМеняетКартинку() {
+        NetworkLine труба = NetworkLine.emptyFluid();
+        assertEquals(0, NetworkFluids.ступень(труба));
+        NetworkFluids.fill(труба, ВОДА, NetworkFluids.CAPACITY / 2, false);
+        int середина = NetworkFluids.ступень(труба);
+        assertTrue(середина > 0, "наполовину полная труба видна иначе, чем пустая");
+        NetworkFluids.fill(труба, ВОДА, NetworkFluids.CAPACITY, false);
+        assertEquals(4, NetworkFluids.ступень(труба));
+    }
+
+    /**
+     * Жидкость рисуется уже оболочки, иначе её не видно сквозь стекло.
+     */
+    @Test
+    void жидкостьВписываетсяВОтрезок() {
+        NetworkGeometry.Segment отрезок = new NetworkGeometry.Segment(5, 5, 5, 7, 7, 7);
+        NetworkGeometry.Segment сок = NetworkGeometry.inset(отрезок, 0.5);
+        assertTrue(сок.x2() - сок.x1() < отрезок.x2() - отрезок.x1(),
+                "жидкость уже оболочки по X");
+        assertEquals(5.5, сок.x1(), "жидкость вписана в сечение, а не сдвинута");
+        assertEquals(6.5, сок.x2(), "жидкость вписана в сечение с другой стороны");
+        // нулевая ширина не схлопывается в точку
+        NetworkGeometry.Segment тонкий = new NetworkGeometry.Segment(5, 5, 5, 5, 7, 7);
+        NetworkGeometry.Segment внутри = NetworkGeometry.inset(тонкий, 0.5);
+        assertEquals(тонкий.x1(), внутри.x1(),
+                "сторона без толщины остаётся на месте, а не пропадает");
+    }
+
+    /** Труба одна на блок: предмет один, и отличать её нечем. */
+    @Test
+    void трубаВБлокеОдна() {
+        NetworkLines линии = new NetworkLines();
+        assertTrue(линии.add(LineKind.FLUID, DyeColor.WHITE));
+        assertFalse(линии.add(LineKind.FLUID, DyeColor.WHITE),
+                "вторая труба в блок не влезает: предмет один на все жидкости");
+        assertTrue(линии.add(LineKind.ENERGY, DyeColor.RED),
+                "провод в блок с трубой всё ещё влезает");
+        assertEquals(2, линии.count());
+        assertEquals(LineKind.FLUID, линии.line(LineKind.FLUID, DyeColor.WHITE).kind());
+    }
+
+    /** Труба и труба бездны — разные линии: вид и есть тождество. */
+    @Test
+    void безднаИТрубаНеПутаются() {
+        NetworkLines линии = new NetworkLines();
+        assertTrue(линии.add(LineKind.ABYSS, DyeColor.WHITE));
+        assertTrue(линии.add(LineKind.FLUID, DyeColor.WHITE),
+                "труба жидкости и труба бездны в одном блоке не мешают друг другу");
+        assertEquals(2, линии.count());
+        assertEquals(LineKind.ABYSS, линии.line(LineKind.ABYSS, DyeColor.WHITE).kind());
+        assertEquals(LineKind.FLUID, линии.line(LineKind.FLUID, DyeColor.WHITE).kind());
     }
 }

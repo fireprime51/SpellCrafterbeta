@@ -87,14 +87,8 @@ public final class NetworkLines {
 
     /** Номер слота линии такого вида и цвета или -1. */
     public int slot(LineKind kind, DyeColor color) {
-        for (int slot = 0; slot < lines.size(); slot++) {
-            NetworkLine линия = lines.get(slot);
-            if (линия != null && линия.kind() == kind
-                    && (kind == LineKind.ABYSS || линия.color() == color)) {
-                return slot;
-            }
-        }
-        return -1;
+        NetworkLine линия = line(kind, color);
+        return линия == null ? -1 : lines.indexOf(линия);
     }
 
     /**
@@ -161,10 +155,14 @@ public final class NetworkLines {
      */
     public NetworkLine line(LineKind kind, DyeColor color) {
         for (NetworkLine линия : lines) {
-            if (линия != null && линия.kind() == kind
-                    && (kind == LineKind.ABYSS || линия.color() == color)) {
-                return линия;
+            if (линия == null || линия.kind() != kind) {
+                continue;
             }
+            // у бездны и у трубы цвета нет: обе не делятся им
+            if (kind == LineKind.ENERGY && линия.color() != color) {
+                continue;
+            }
+            return линия;
         }
         return null;
     }
@@ -182,7 +180,8 @@ public final class NetworkLines {
         }
         int slot = freeSlot();
         grow(slot);
-        lines.set(slot, NetworkLine.empty(kind, color));
+        lines.set(slot, kind == LineKind.FLUID ? NetworkLine.emptyFluid()
+                : NetworkLine.empty(kind, color));
         return true;
     }
 

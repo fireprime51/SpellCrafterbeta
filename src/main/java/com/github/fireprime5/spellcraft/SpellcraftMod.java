@@ -77,6 +77,13 @@ public class SpellcraftMod {
                 com.github.fireprime5.spellcraft.registry.ModBlocks.WIRE_ENTITY.get(),
                 (сеть, side) -> сеть.energyStorage());
 
+        // жидкость: труба отдаёт и принимает, иначе ведро и чужие баки не видели бы
+        // её вовсе, а труба была бы мёртвым блоком
+        event.registerBlockEntity(
+                net.neoforged.neoforge.capabilities.Capabilities.FluidHandler.BLOCK,
+                com.github.fireprime5.spellcraft.registry.ModBlocks.WIRE_ENTITY.get(),
+                (сеть, side) -> сеть.fluidStorage());
+
         // энергия плавильни. Её не было вообще: блок объявлял только
         // предметы, поэтому провод не мог его зарядить и машина молчала
         event.registerBlockEntity(

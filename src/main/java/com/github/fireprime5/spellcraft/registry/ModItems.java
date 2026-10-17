@@ -54,6 +54,10 @@ public final class ModItems {
             () -> new BlockItem(ModBlocks.MANA_VESSEL.get(), new Item.Properties()));
 
     /** Предмет-блок для провода без выбранного цвета. */
+    /** Труба жидкости: одна штука на все жидкости, вид узнаётся от соседа. */
+    public static final Supplier<Item> FLUID_PIPE = ITEMS.register("fluid_pipe",
+            () -> new FluidPipeItem(new Item.Properties().stacksTo(64)));
+
     public static final Supplier<Item> WIRE = ITEMS.register("wire",
             () -> new WireItem(net.minecraft.world.item.DyeColor.WHITE, new Item.Properties()));
 
@@ -144,6 +148,15 @@ public final class ModItems {
         private WireItem(net.minecraft.world.item.DyeColor цвет, Item.Properties свойства) {
             super(ModBlocks.WIRE.get(), com.github.fireprime5.spellcraft.network.LineKind.ENERGY,
                     цвет, свойства);
+        }
+    }
+
+    /** Предмет трубы жидкости: предмет один, жидкость узнаётся от соседа. */
+    private static final class FluidPipeItem extends com.github.fireprime5.spellcraft.network.NetworkItem {
+
+        private FluidPipeItem(Item.Properties свойства) {
+            super(ModBlocks.WIRE.get(), com.github.fireprime5.spellcraft.network.LineKind.FLUID,
+                    net.minecraft.world.item.DyeColor.WHITE, свойства);
         }
     }
 

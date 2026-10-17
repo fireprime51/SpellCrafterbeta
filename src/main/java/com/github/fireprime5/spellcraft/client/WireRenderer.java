@@ -2,6 +2,8 @@ package com.github.fireprime5.spellcraft.client;
 
 import com.github.fireprime5.spellcraft.Spellcraft;
 import com.github.fireprime5.spellcraft.network.NetworkBlockEntity;
+import com.github.fireprime5.spellcraft.network.LineKind;
+import com.github.fireprime5.spellcraft.network.NetworkFluids;
 import com.github.fireprime5.spellcraft.network.NetworkGeometry;
 import com.github.fireprime5.spellcraft.network.NetworkItems;
 import com.github.fireprime5.spellcraft.network.NetworkLine;
@@ -49,8 +51,13 @@ import java.util.Set;
  */
 public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
 
-    /** Меш по набору подключений: ключ — вид, цвет и маска каждой линии. */
-    private final Map<List<Integer>, Mesh> cache = new HashMap<>();
+    /**
+     * Меш по набору подключений: ключ — вид, цвет, маска, жидкость и заполнение.
+     *
+     * <p>У трубы в ключ входит ещё и ступень заливки: пустая, наполовину полная и
+     * полная труба выглядят по-разному, а кэш отдал бы прежнюю картинку.
+     */
+    private final Map<List<Integer>, Меши> cache = new HashMap<>();
 
     /** Ошибки, о которых уже сказали в лог: иначе одно и то же каждый кадр. */
     private static final Set<String> warned = new HashSet<>();
@@ -61,21 +68,35 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
         if (сеть.isEmpty()) {
             return;
         }
-        Mesh меш = mesh(сеть);
-        if (меш == null || меш.isEmpty()) {
+        Меши меши = mesh(сеть);
+        if (меши == null || (меши.оболочка.isEmpty() && меши.содержимое.isEmpty())) {
             // линии в блоке есть, а рисовать нечего: это поломка, и она молча
             // выглядит как «провод не рисуется»
             warn("в блоке с линиями собрался пустой меш");
             return;
         }
-        VertexConsumer consumer = buffer.getBuffer(RenderType.cutout());
         pose.pushPose();
         try {
-            for (Квадро quad : меш.квадро) {
-                quad.write(consumer, pose.last(), light, overlay);
+            // оболочка трубы прозрачная, поэтому рисуется второй: сначала то,
+            // что внутри, потом стекло поверх
+            if (!меши.оболочка.isEmpty()) {
+                draw(меши.оболочка, buffer.getBuffer(меши.прозрачная
+                        ? RenderType.translucent() : RenderType.cutout()),
+                        pose, light, overlay);
+            }
+            if (!меши.содержимое.isEmpty()) {
+                draw(меши.содержимое, buffer.getBuffer(RenderType.solid()),
+                        pose, light, overlay);
             }
         } finally {
             pose.popPose();
+        }
+    }
+
+    private static void draw(Mesh меш, VertexConsumer consumer, PoseStack pose,
+                             int light, int overlay) {
+        for (Квадро quad : меш.квадро) {
+            quad.write(consumer, pose.last(), light, overlay);
         }
     }
 
@@ -85,14 +106,18 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
      * <p>Кэш ограничен: мир с тысячей разных развилок иначе съел бы память
      * клиента, а пересобирать двадцать кубиков там, где видно три блока, дешевле.
      */
-    private Mesh mesh(NetworkBlockEntity сеть) {
+    private Меши mesh(NetworkBlockEntity сеть) {
         List<Integer> ключ = new java.util.ArrayList<>();
         for (NetworkLine линия : сеть.lines()) {
             ключ.add(линия == null ? -1
                     : (линия.kind().ordinal() << 12) | (линия.color().ordinal() << 6)
                     | линия.mask());
+            // труба: жидкость задаёт цвет, заполнение — видно ли содержимое
+            ключ.add(линия == null || линия.kind() != LineKind.FLUID ? 0
+                    : (линия.fluid() == null ? 0 : линия.fluid().hashCode())
+                    ^ NetworkFluids.ступень(линия) * 0x5f3759df);
         }
-        Mesh меш = cache.get(ключ);
+        Меши меш = cache.get(ключ);
         if (меш != null) {
             return меш;
         }
@@ -105,8 +130,10 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
     }
 
     /** Сборка меша: у каждой линии своя текстура и свои отрезки. */
-    private Mesh build(NetworkBlockEntity сеть) {
-        Mesh меш = new Mesh();
+    private Меши build(NetworkBlockEntity сеть) {
+        Mesh оболочка = new Mesh();
+        Mesh содержимое = new Mesh();
+        boolean прозрачная = false;
         List<NetworkLine> линии = сеть.lines();
         for (int slot = 0; slot < линии.size() && slot < NetworkGeometry.SLOTS; slot++) {
             NetworkLine линия = линии.get(slot);
@@ -114,12 +141,45 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 continue;
             }
             UV uv = uv(линия);
+            boolean труба = линия.kind() == LineKind.FLUID;
+            прозрачная |= труба;
+            float[] краска = труба ? цветЖидкости(линия) : цвет(линия.color());
             for (NetworkGeometry.Segment отрезок
                     : NetworkGeometry.segments(slot, линия.sides())) {
-                box(меш, отрезок, uv, линия.color());
+                box(оболочка, отрезок, uv, труба ? СТЕКЛО : краска);
+                if (труба && NetworkFluids.виднаЖидкость(линия)) {
+                    // жидкость уже отступа: она должна быть видна сквозь стенку,
+                    // иначе стекло закрывает её целиком
+                    box(содержимое, NetworkGeometry.inset(отрезок, 0.5), uv, краска);
+                }
             }
         }
-        return меш;
+        return new Меши(оболочка, содержимое, прозрачная);
+    }
+
+    /**
+     * Оболочка трубы: белая и полупрозрачная.
+     *
+     * <p>Цвет несут края спрайта, а середина почти прозрачна: сквозь неё и видно
+     * жидкость внутри.
+     */
+    private static final float[] СТЕКЛО = {1f, 1f, 1f, 0.35f};
+
+    /**
+     * Цвет жидкости по её виду.
+     *
+     * <p>Ванильные жидкости известны наперёд, остальным достаётся нейтральный
+     * цвет: точный оттенок модовской жидкости лежит в её клиентском расширении, а
+     * дёргать то и другое из блока линии — лишняя связность ради оттенка.
+     */
+    private static float[] цветЖидкости(NetworkLine линия) {
+        int argb = switch (String.valueOf(линия.fluid())) {
+            case "minecraft:water" -> 0x3F76E4;
+            case "minecraft:lava" -> 0xF76B0C;
+            default -> 0xB4D8E8;
+        };
+        return new float[]{((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
+                (argb & 0xFF) / 255f, 1f};
     }
 
     /**
@@ -159,8 +219,7 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
      * нормалью: у {@code cutout} задние грани отсекаются, и вторая запись той же
      * грани была бы либо бесполезной, либо мерцанием в глубину.
      */
-    private void box(Mesh меш, NetworkGeometry.Segment отрезок, UV uv, DyeColor цвет) {
-        float[] tint = цвет(цвет);
+    private void box(Mesh меш, NetworkGeometry.Segment отрезок, UV uv, float[] tint) {
         for (NetworkGeometry.Face грань : NetworkGeometry.faces(отрезок)) {
             float[][] вершины = new float[4][3];
             for (int i = 0; i < 4; i++) {
@@ -176,6 +235,15 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
         int argb = цвет.getTextureDiffuseColor();
         return new float[]{((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
                 (argb & 0xFF) / 255f, 1f};
+    }
+
+    /**
+     * Что рисовать: оболочка линий и то, что внутри неё.
+     *
+     * <p>У провода и трубы бездны содержимого нет; у трубы жидкости оболочка
+     * прозрачная, а внутри неё видна сама жидкость.
+     */
+    private record Меши(Mesh оболочка, Mesh содержимое, boolean прозрачная) {
     }
 
     /** Готовый меш: список квадро, которые осталось вывести. */
