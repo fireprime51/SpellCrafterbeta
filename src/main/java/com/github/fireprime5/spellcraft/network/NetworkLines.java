@@ -72,6 +72,61 @@ public final class NetworkLines {
         return count() < NetworkGeometry.SLOTS;
     }
 
+    /** Номер слота линии такого вида и цвета или -1. */
+    public int slot(LineKind kind, DyeColor color) {
+        for (int slot = 0; slot < lines.size(); slot++) {
+            NetworkLine линия = lines.get(slot);
+            if (линия != null && линия.kind() == kind
+                    && (kind == LineKind.ABYSS || линия.color() == color)) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Перенести линию в свободный слот.
+     *
+     * <p>Слот — номер геометрии, и место входа в грань блока. Переносят линию к
+     * соседу, у которого такая же линия стоит в другом слоте: иначе оба блока
+     * тянутся навстречу друг другу из разных точек, и на стыке видна ступенька.
+     */
+    public boolean move(int from, int to) {
+        if (from < 0 || from >= lines.size() || to < 0 || to >= NetworkGeometry.SLOTS
+                || from == to || lines.get(from) == null) {
+            return false;
+        }
+        if (to < lines.size() && lines.get(to) != null) {
+            return false;
+        }
+        NetworkLine линия = lines.get(from);
+        while (lines.size() < to) {
+            lines.add(null);
+        }
+        lines.set(to, линия);
+        lines.set(from, null);
+        trim();
+        return true;
+    }
+
+    /**
+     * Поменять две линии слотами местами.
+     *
+     * <p>Нужно, когда сосед заполнил слоты в обратном порядке: красная у него во
+     * втором слоте, синяя — в первом. Ни одну из них нельзя сдвинуть в одиночку,
+     * обе встанут на место, если поменяться слотами.
+     */
+    public boolean swap(int a, int b) {
+        if (a < 0 || b < 0 || a == b || a >= lines.size() || b >= lines.size()
+                || lines.get(a) == null || lines.get(b) == null) {
+            return false;
+        }
+        NetworkLine линия = lines.get(a);
+        lines.set(a, lines.get(b));
+        lines.set(b, линия);
+        return true;
+    }
+
     /** Номер первого свободного слота или -1. */
     public int freeSlot() {
         for (int slot = 0; slot < NetworkGeometry.SLOTS; slot++) {

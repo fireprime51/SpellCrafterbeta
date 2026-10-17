@@ -154,17 +154,100 @@ public class NetworkBlockEntity extends BlockEntity {
 
     /** Пересчитать подключения этого блока по соседям. */
     public void reconnect(Level level, BlockPos pos) {
-        boolean изменилось = false;
+        boolean изменилось = выровнятьСлоты(level, pos);
         for (NetworkLine линия : lines.all()) {
+            if (линия == null) {
+                continue;
+            }
             int было = линия.mask();
             for (Direction d : Direction.values()) {
-                линия.connect(d, connects(level, pos, d, линия.kind(), линия.color()));
+                линия.connect(d, connects(level, pos, d, линия.kind(), линия.color())
+                        && слотыСовпали(level, pos, d, линия));
             }
             изменилось |= было != линия.mask();
         }
         if (изменилось) {
             sync(level, pos);
         }
+    }
+
+    /**
+     * Свести слоты линий с соседями.
+     *
+     * <p>Слот — это номер геометрии, то есть точка входа в грань: 5/16, 8/16 или
+     * 11/16. Сосед узнаёт линию по виду и цвету, а стоит она в своём слоте. Если
+     * слоты разошлись — в одном блоке красная первая, в соседнем второй, — оба
+     * тянутся навстречу друг другу из разных точек: сеть формально соединена, а
+     * на стыке ступенька в три пикселя, и линии разных цветов выглядят
+     * перепутанными.
+     *
+     * <p>Сосед важнее: его слот блок принимает и подстраивается под него, если
+     * слот свободен. Занятый слот — обмен местами, когда сосед держит на нём как
+     * раз ту линию, которая у нас стоит в её слоте. Не вышло — блок просто не
+     * соединится с этим соседом: разрыв лучше ступеньки.
+     *
+     * @return сдвинулась ли хоть одна линия
+     */
+    private boolean выровнятьСлоты(Level level, BlockPos pos) {
+        boolean изменилось = false;
+        for (int проход = 0; проход < NetworkGeometry.SLOTS; проход++) {
+            boolean сдвинули = false;
+            for (Direction d : Direction.values()) {
+                BlockPos сосед = pos.relative(d);
+                if (!(level.getBlockEntity(сосед) instanceof NetworkBlockEntity be)) {
+                    continue;
+                }
+                for (NetworkLine линия : lines.all()) {
+                    if (линия == null) {
+                        continue;
+                    }
+                    NetworkLine рядом = be.line(линия.kind(), линия.color());
+                    if (рядом == null) {
+                        continue;
+                    }
+                    int мой = lines.slot(линия.kind(), линия.color());
+                    int его = be.lines.slot(рядом.kind(), рядом.color());
+                    if (мой < 0 || его < 0 || мой == его || be.lines.line(его) == null) {
+                        continue;
+                    }
+                    NetworkLine занятая = lines.line(его);
+                    if (занятая == null) {
+                        сдвинули |= lines.move(мой, его);
+                    } else if (be.lines.slot(занятая.kind(), занятая.color()) == мой) {
+                        // сосед держит на нашем слоте ровно ту линию, которая
+                        // сейчас стоит у нас: обе встанут на место обменом
+                        сдвинули |= lines.swap(мой, его);
+                    }
+                    if (сдвинули) {
+                        изменилось = true;
+                    }
+                }
+            }
+            if (!сдвинули) {
+                break;
+            }
+        }
+        return изменилось;
+    }
+
+    /**
+     * Совпадает ли слот линии с её слотом у соседа.
+     *
+     * <p>Только для блоков сети: у машины своего слота нет, и линия входит в её
+     * грань откуда угодно.
+     */
+    private boolean слотыСовпали(Level level, BlockPos pos, Direction d, NetworkLine линия) {
+        BlockPos сосед = pos.relative(d);
+        if (!(level.getBlockState(сосед).getBlock() instanceof WireBlock)) {
+            return true;
+        }
+        if (!(level.getBlockEntity(сосед) instanceof NetworkBlockEntity be)) {
+            return false;
+        }
+        NetworkLine рядом = be.line(линия.kind(), линия.color());
+        return рядом != null
+                && be.lines.slot(рядом.kind(), рядом.color())
+                == lines.slot(линия.kind(), линия.color());
     }
 
     /**

@@ -474,4 +474,63 @@ class NetworkLineTest {
         assertTrue(линии.isEmpty(), "блок без линий должен считаться пустым");
         assertEquals(0, линии.size(), "хвост из пустот обрезан");
     }
+
+    /**
+     * Линия переезжает в слот соседа, чтобы стык был ровным.
+     *
+     * <p>Слот — это точка входа в грань (5/16, 8/16, 11/16). Сосед узнаёт линию по
+     * виду и цвету, а стоит она в своём слоте: в одном блоке красная может быть
+     * первой, в соседнем — второй. Без переноса оба блока тянутся навстречу друг
+     * другу из разных точек, и на стыке видна ступенька в три пикселя.
+     */
+    @Test
+    void линияПереезжаетВСлотСоседа() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.add(LineKind.ENERGY, DyeColor.GREEN);
+        линии.remove(1);
+
+        assertTrue(линии.move(0, 1), "свободный слот должен принять линию");
+        assertNull(линии.line(0), "прежний слот линии остаётся пустым");
+        assertEquals(DyeColor.RED, линии.line(1).color(),
+                "красная встала в слот соседа, а не осталась на 5/16");
+        assertEquals(DyeColor.GREEN, линии.line(2).color(), "остальные не тронуты");
+        assertFalse(линии.move(1, 2), "занятый слот линию не принимает");
+        assertFalse(линии.move(-1, 2), "несуществующего слота нет");
+    }
+
+    /**
+     * Обмен слотами, когда сосед заполнил их в обратном порядке.
+     *
+     * <p>Красная у соседа во втором слоте, синяя — в первом. Ни одну из них нельзя
+     * сдвинуть в одиночку: обе встанут на место, если поменяться слотами.
+     */
+    @Test
+    void обменСлотовССоседом() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        assertTrue(линии.swap(0, 1));
+        assertEquals(DyeColor.BLUE, линии.line(0).color());
+        assertEquals(DyeColor.RED, линии.line(1).color());
+        assertFalse(линии.swap(0, 5), "обмен с несуществующим слотом невозможен");
+    }
+
+    /** Номер слота ищется по виду и цвету, а не по позиции в списке. */
+    @Test
+    void номерСлотаИщетсяПоЛинии() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ABYSS, DyeColor.WHITE);
+        assertEquals(0, линии.slot(LineKind.ENERGY, DyeColor.RED));
+        assertEquals(1, линии.slot(LineKind.ABYSS, DyeColor.WHITE),
+                "у бездны цвет не различает линии");
+        assertEquals(-1, линии.slot(LineKind.ENERGY, DyeColor.LIME));
+
+        линии.remove(0);
+        assertEquals(-1, линии.slot(LineKind.ENERGY, DyeColor.RED), "снятой линии нет");
+        assertEquals(1, линии.slot(LineKind.ABYSS, DyeColor.WHITE),
+                "оставшаяся линия не переезжает на освободившийся слот сама");
+    }
 }
