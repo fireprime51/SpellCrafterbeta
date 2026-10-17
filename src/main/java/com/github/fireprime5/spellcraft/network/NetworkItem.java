@@ -158,6 +158,9 @@ public abstract class NetworkItem extends BlockItem {
             }
             NetworkBlockEntity.refresh(уровень, позиция);
             сеть.sync(уровень, позиция);
+            Spellcraft.LOGGER.info("Сеть: доклал {} в {} — линий в блоке: {}",
+                    NetworkItems.id(new NetworkLine(kind, color, 0, 0)), позиция,
+                    сеть.lines().size());
         }
         return true;
     }
