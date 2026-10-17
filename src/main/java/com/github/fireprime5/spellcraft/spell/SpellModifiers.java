@@ -46,7 +46,18 @@ public final class SpellModifiers {
     public static final SpellModifier POWERFUL = SpellModifier.of("powerful",
             "modifier.spellcraft.powerful", 220, 0.20, 30, null, "modifier.spellcraft.powerful.desc");
 
+    // щит и барьер: не «усиление», а переключатель того, что именно держится.
+    // Нужен, потому что «щит на все удары» и «щит только на снаряды» — это один
+    // и тот же модуль с галочкой, а не два разных модуля в палитре.
+    public static final SpellModifier PROJECTILES_ONLY = SpellModifier.of("projectiles_only",
+            "modifier.spellcraft.projectiles_only", 120, 0.35, 6, "shield",
+            "modifier.spellcraft.projectiles_only.desc");
+
     public static final List<SpellModifier> MINING = List.of(SILK, FORTUNE, AREA, INSTANT);
+
+    /** Модификаторы защиты: оба щита и оба барьера делят один и тот же список. */
+    public static final List<SpellModifier> SHIELD =
+            List.of(PROJECTILES_ONLY);
     public static final List<SpellModifier> EXPLOSION =
             List.of(NO_BLOCKS, WIDE, FIRE, SHOVE, POWERFUL);
 

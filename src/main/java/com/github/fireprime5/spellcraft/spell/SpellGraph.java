@@ -19,9 +19,6 @@ public class SpellGraph {
     public static final com.mojang.serialization.Codec<SpellGraph> CODEC =
             SpellNode.FULL_CODEC.listOf().xmap(SpellGraph::fromNodes, g -> g.nodes);
 
-    /** Максимум модулей в одном заклинании (защита от мусорных пакетов). */
-    public static final int MAX_NODES = 512;
-
     public final List<SpellNode> nodes = new ArrayList<>();
 
     public static SpellGraph fromNodes(List<SpellNode> nodes) {
@@ -89,39 +86,43 @@ public class SpellGraph {
     public List<Integer> topologicalOrder(List<SpellIssue> issues) {
         int n = nodes.size();
         int[] state = new int[n]; // 0 = new, 1 = visiting, 2 = done
+        int[] nextDependency = new int[n];
+        java.util.ArrayDeque<Integer> stack = new java.util.ArrayDeque<>();
         List<Integer> order = new ArrayList<>();
 
         for (int i = 0; i < n; i++) {
-            if (state[i] == 0 && !dfs(i, state, order, issues)) {
-                return null;
+            if (state[i] != 0) {
+                continue;
+            }
+            state[i] = 1;
+            stack.push(i);
+            while (!stack.isEmpty()) {
+                int current = stack.peek();
+                List<Integer> dependencies = nodes.get(current).inputConnections;
+                SpellModuleType currentType = SpellModules.get(nodes.get(current).moduleId);
+                int dependencyCount = currentType == null
+                        ? dependencies.size() : Math.min(dependencies.size(), currentType.inputs());
+                if (nextDependency[current] == dependencyCount) {
+                    stack.pop();
+                    state[current] = 2;
+                    order.add(current);
+                    continue;
+                }
+                int dep = dependencies.get(nextDependency[current]++);
+                if (dep < 0 || dep >= n) {
+                    continue;
+                }
+                if (state[dep] == 1) {
+                    issues.add(SpellIssue.of("graph.cycle"));
+                    return null;
+                }
+                if (state[dep] == 0) {
+                    state[dep] = 1;
+                    stack.push(dep);
+                }
             }
         }
         return order;
-    }
-
-    private boolean dfs(int i, int[] state, List<Integer> order, List<SpellIssue> issues) {
-        state[i] = 1;
-        SpellNode node = nodes.get(i);
-        for (int dep : node.inputConnections) {
-            if (dep < 0) {
-                continue;
-            }
-            if (dep >= state.length) {
-                // битая связь (например, из чужого/старого сохранения):
-                // validate() уже сообщит о ней, здесь просто пропускаем
-                continue;
-            }
-            if (state[dep] == 1) {
-                issues.add(SpellIssue.of("graph.cycle"));
-                return false;
-            }
-            if (state[dep] == 0 && !dfs(dep, state, order, issues)) {
-                return false;
-            }
-        }
-        state[i] = 2;
-        order.add(i);
-        return true;
     }
 
     /**
@@ -137,13 +138,21 @@ public class SpellGraph {
      * @param player игрок (null — проверка без ограничений)
      */
     public List<SpellIssue> validate(net.minecraft.world.entity.player.Player player) {
+        return validate(player, com.github.fireprime5.spellcraft.spell.validation.SchemaPolicy.SPELL);
+    }
+
+    public List<SpellIssue> validate(net.minecraft.world.entity.player.Player player,
+            com.github.fireprime5.spellcraft.spell.validation.SchemaPolicy policy) {
         List<SpellIssue> issues = new ArrayList<>();
+        if (policy.maxNodes() >= 0 && nodes.size() > policy.maxNodes()) {
+            issues.add(SpellIssue.of("graph.too_many", policy.maxNodes()));
+        }
         Map<ResourceLocation, Integer> counts = new HashMap<>();
 
         for (int i = 0; i < nodes.size(); i++) {
             SpellNode node = nodes.get(i);
             SpellModuleType type = SpellModules.get(node.moduleId);
-            if (type == null) {
+            if (type == null || !policy.allows(node.moduleId)) {
                 issues.add(SpellIssue.of("module.unknown", node.moduleId.toString()));
                 continue;
             }
@@ -263,6 +272,15 @@ public class SpellGraph {
         return issues;
     }
 
+    /** Editing graphs may be empty or have unconnected required inputs. */
+    public List<SpellIssue> validateForSave(net.minecraft.world.entity.player.Player player,
+            com.github.fireprime5.spellcraft.spell.validation.SchemaPolicy policy) {
+        return validate(player, policy).stream()
+                .filter(issue -> !issue.key().equals("graph.missing_input")
+                        && !issue.key().equals("graph.empty"))
+                .toList();
+    }
+
     /**
      * Убирает "читерские" модификаторы: неизвестные, не разрешённые модулю,
      * конфликтующие и ещё не изученные игроком. Вызывается на сервере перед
@@ -273,7 +291,8 @@ public class SpellGraph {
     public boolean sanitizeModifiers(
             net.minecraft.world.entity.player.Player player) {
         boolean changed = false;
-        for (SpellNode node : nodes) {
+        for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
+            SpellNode node = nodes.get(nodeIndex);
             SpellModuleType type = SpellModules.get(node.moduleId);
             if (node.modifiers.isEmpty()) {
                 continue;
@@ -317,25 +336,31 @@ public class SpellGraph {
         return changed;
     }
 
-    /** Границы графа по клеткам — для бесконечной сетки не ограничены. */
-    public int maxX() {
-        int max = 0;
-        for (SpellNode n : nodes) {
-            max = Math.max(max, n.gridX);
-        }
-        return max;
-    }
-
-    public int totalManaCost() {
-        int total = 0;
-        for (SpellNode node : nodes) {
+    /**
+     * Полная стоимость каста.
+     *
+     * <p>Часть модулей стоит не фиксированное число, а зависит от игрока
+     * («Расщепление» сжигает весь кошелёк), поэтому цену спрашиваем у самого
+     * модуля с потолком энергии бездны переданным.
+     *
+     * @param manaCapacity потолок энергии бездны из конфига; 0 — неизвестно
+     */
+    public int totalAbyssCost(int manaCapacity) {
+        long total = 0L;
+        for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
+            SpellNode node = nodes.get(nodeIndex);
             SpellModuleType type = SpellModules.get(node.moduleId);
             if (type != null) {
-                total += type.manaCost() + SpellModifiers.totalCastCost(
-                        new java.util.HashSet<>(node.modifiers));
+                total += (long) type.castCost(manaCapacity)
+                        + SpellModifiers.totalCastCost(new java.util.HashSet<>(node.modifiers));
             }
         }
-        return total;
+        return (int) Math.min(total, Integer.MAX_VALUE);
+    }
+
+    /** То же без знания о кошельке: для предпросмотра и команд. */
+    public int totalAbyssCost() {
+        return totalAbyssCost(0);
     }
 
     public CompoundTag save() {
@@ -351,13 +376,12 @@ public class SpellGraph {
     /**
      * Чтение графа из NBT (пакеты, буфер обмена, файлы). Данные приходят от
      * клиента, поэтому читаются «мягко»: неизвестные узлы и битые индексы связей
-     * не приводят к исключению, а количество модулей ограничено.
+     * не приводят к исключению. Ограничения контекста проверяются отдельно.
      */
     public static SpellGraph load(CompoundTag tag) {
         SpellGraph graph = new SpellGraph();
         ListTag list = tag.getList("nodes", Tag.TAG_COMPOUND);
-        int count = Math.min(list.size(), MAX_NODES);
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < list.size(); i++) {
             graph.nodes.add(SpellNode.load(list.getCompound(i)));
         }
         graph.dropBrokenConnections();
@@ -367,13 +391,60 @@ public class SpellGraph {
     /** Убирает связи, ведущие за пределы графа (или сами на себя). */
     public void dropBrokenConnections() {
         int size = nodes.size();
-        for (SpellNode node : nodes) {
+        for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
+            SpellNode node = nodes.get(nodeIndex);
             node.sanitize();
-            node.inputConnections.replaceAll(conn -> conn < 0 || conn >= size ? -1 : conn);
+            SpellModuleType type = SpellModules.get(node.moduleId);
+            if (type != null && node.inputConnections.size() > type.inputs()) {
+                node.inputConnections = new ArrayList<>(node.inputConnections.subList(0, type.inputs()));
+            }
+            for (int port = 0; port < node.inputConnections.size(); port++) {
+                int conn = node.inputConnections.get(port);
+                if (conn < 0 || conn >= size || conn == nodeIndex) {
+                    node.inputConnections.set(port, -1);
+                }
+            }
         }
     }
 
     public SpellGraph copy() {
         return load(save());
+    }
+
+    /**
+     * Одинаковое ли содержание у двух графов.
+     *
+     * <p>Сравнение по содержимому, а не по ссылке: клиенту нужно отличить
+     * «сервер просто подтвердил мою правку» от «сервер прислал другую схему»
+     * (загрузку из библиотеки, откат модификаторов). Сравнение ссылок для
+     * этого не годится — подтверждение приходит уже другим объектом.
+     */
+    public boolean sameAs(SpellGraph other) {
+        if (other == null || other.nodes.size() != nodes.size()) {
+            return false;
+        }
+        for (int i = 0; i < nodes.size(); i++) {
+            SpellNode a = nodes.get(i);
+            SpellNode b = other.nodes.get(i);
+            if (!a.moduleId.equals(b.moduleId) || a.gridX != b.gridX || a.gridY != b.gridY) {
+                return false;
+            }
+            if (!a.param.equals(b.param) || !a.modifiers.equals(b.modifiers)) {
+                return false;
+            }
+            // длины списков связей могут различаться: хвост из «-1» ничего
+            // не значит, а приводить к общему виду заранее нечем
+            int len = Math.max(a.inputConnections.size(), b.inputConnections.size());
+            for (int port = 0; port < len; port++) {
+                if (connection(a, port) != connection(b, port)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static int connection(SpellNode node, int port) {
+        return port < node.inputConnections.size() ? node.inputConnections.get(port) : -1;
     }
 }

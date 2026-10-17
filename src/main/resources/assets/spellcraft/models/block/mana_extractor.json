@@ -1,0 +1,7 @@
+{
+  "parent": "block/cube_all",
+  "textures": {
+    "all": "spellcraft:block/mana_extractor",
+    "particle": "spellcraft:block/mana_extractor"
+  }
+}

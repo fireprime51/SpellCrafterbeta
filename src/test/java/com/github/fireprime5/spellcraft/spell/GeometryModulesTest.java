@@ -56,7 +56,10 @@ class GeometryModulesTest {
 
     private static SpellValue run(String path, List<SpellValue> inputs) {
         List<SpellValue> outputs = new ArrayList<>();
-        module(path).execute(null, inputs, outputs);
+        // контекст без кастующего: проверку дальности (она зовёт requireInRange)
+        // в тестах пропускают, а сама геометрия проверяется отдельно в
+        // SpellContextRangeTest
+        module(path).execute(new SpellContext(null, null, Vec3.ZERO), inputs, outputs);
         assertEquals(1, outputs.size(), path + " должен отдать ровно одно значение");
         return outputs.get(0);
     }

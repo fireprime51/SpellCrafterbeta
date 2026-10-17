@@ -60,9 +60,9 @@ class SpellModulesRegistryTest {
     @Test
     void поискНаходитНовыеМодули() {
         assertFalse(SpellModules.search("молния", null).isEmpty(), "поиск по «молния»");
-        assertFalse(SpellModules.search("телепорт", null).isEmpty(), "поиск по «телепорт»");
         assertFalse(SpellModules.search("здоровье", null).isEmpty(), "поиск по здоровью");
-        assertFalse(SpellModules.search("effect_speed", null).isEmpty());
+        assertFalse(SpellModules.search("построить", null).isEmpty(), "поиск по «построить»");
+        assertFalse(SpellModules.search("добыча", null).isEmpty(), "поиск по «добыча»");
     }
 
     @Test

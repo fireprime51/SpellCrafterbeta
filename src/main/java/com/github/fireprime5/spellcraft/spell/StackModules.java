@@ -19,7 +19,63 @@ public final class StackModules {
     private static final SpellModuleType.Category LOG = SpellModuleType.Category.LOGIC;
     private static final int C_STACK = 0xFF4FB0C8;
 
+    /**
+     * Задержка во времени: отложить значение и забрать его позже.
+     *
+     * <p>Графа, который умеет ждать, здесь нет и быть не должно: пауза внутри
+     * каста подвесила бы кадр у всех, кто рядом. Поэтому задержка — это очередь
+     * между кастами: первый кладёт значение, второй забирает. Работает и в
+     * обратную сторону — «положить и забыть», как отложенное заклинание.
+     *
+     * <p>Пустой вывод у «забрать» означает «ещё не дозрело» и не является
+     * ошибкой: так модуль можно звать каждый каст, не ломая схему об уходе
+     * из-под срока.
+     */
+    static void delays() {
+        SpellModules.register(new SpellModuleType(SpellModules.id("delay_push"), LOG, C_STACK) {
+            @Override public int inputs() { return 2; }
+            @Override public int outputs() { return 0; }
+            @Override public int manaCost() { return 4; }
+            @Override public PortType[] inputPorts() { return new PortType[]{ANY, NUMBER}; }
+            @Override public void execute(SpellContext ctx, List<SpellValue> in,
+                                          List<SpellValue> out) {
+                SpellValue значение = in.get(0);
+                int тики = in.get(1) == null ? 0 : (int) Math.round(in.get(1).number());
+                if (значение == null || тики <= 0) {
+                    // ноль тиков — это «сейчас», а не «никогда»: иначе значение
+                    // пропадало бы в очереди без срока
+                    throw new SpellContext.SpellException("stack.delay_bad");
+                }
+                boolean принято = DelayedValues.push(ctx.caster().getUUID(), значение,
+                        ctx.level().getGameTime() + тики);
+                if (!принято) {
+                    throw new SpellContext.SpellException("stack.delay_full");
+                }
+                ctx.trace("delay " + тики + " ticks");
+            }
+        });
+
+        SpellModules.register(new SpellModuleType(SpellModules.id("delay_pop"), LOG, C_STACK) {
+            @Override public int inputs() { return 1; }
+            @Override public int outputs() { return 1; }
+            @Override public int manaCost() { return 3; }
+            @Override public PortType[] inputPorts() { return new PortType[]{NUMBER}; }
+            @Override public PortType[] outputPorts() { return new PortType[]{ANY}; }
+            @Override public void execute(SpellContext ctx, List<SpellValue> in,
+                                          List<SpellValue> out) {
+                int ждать = in.get(0) == null ? 0 : (int) Math.round(in.get(0).number());
+                SpellValue значение = DelayedValues.pop(ctx.caster().getUUID(),
+                        ctx.level().getGameTime() + Math.max(0, ждать));
+                // пусто вместо ошибки: модуль зовут каждый каст, и падать на
+                // «ещё рано» означало бы ломать схему каждую секунду
+                out.add(значение);
+            }
+        });
+    }
+
     public static void registerAll() {
+        delays();
+
         // положить значение в стек
         SpellModules.register(new SpellModuleType(SpellModules.id("stack_push"), LOG, C_STACK) {
             @Override public int inputs() { return 1; }

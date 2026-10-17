@@ -64,12 +64,13 @@ class PaletteTest {
         out.add(new String[]{"category.entities", "CATEGORY_ENTITIES"});
         out.add(new String[]{"category.actions", "CATEGORY_ACTIONS"});
         out.add(new String[]{"category.logic", "CATEGORY_LOGIC"});
-        out.add(new String[]{"category.network", "CATEGORY_NETWORK"});
+        out.add(new String[]{"category.effects", "CATEGORY_EFFECTS"});
         out.add(new String[]{"port.number", "PORT_NUMBER"});
         out.add(new String[]{"port.entity", "PORT_ENTITY"});
         out.add(new String[]{"port.point", "PORT_POINT"});
         out.add(new String[]{"port.vector", "PORT_VECTOR"});
         out.add(new String[]{"port.item", "PORT_ITEM"});
+        out.add(new String[]{"port.location", "PORT_LOCATION"});
         out.add(new String[]{"port.any", "PORT_ANY"});
         return out;
     }
@@ -103,9 +104,8 @@ class PaletteTest {
     /**
      * Ошибка обязана быть заметно холоднее тёплой шкалы категорий.
      *
-     * <p>Медный {@code category.network} и оранжевый {@code category.logic} стоят
-     * рядом с красным, и если положить туда же ошибку, сломанный узел станет
-     * неотличим от рабочего.
+     * <p>Медный {@code category.logic} стоит рядом с красным, и если положить
+     * туда же ошибку, сломанный узел станет неотличим от рабочего.
      */
     @Test
     void ошибкаОтличимаОтКатегорий() {
@@ -115,7 +115,7 @@ class PaletteTest {
                 SpellModuleType.Category.ENTITIES, Palette.CATEGORY_ENTITIES,
                 SpellModuleType.Category.ACTIONS, Palette.CATEGORY_ACTIONS,
                 SpellModuleType.Category.LOGIC, Palette.CATEGORY_LOGIC,
-                SpellModuleType.Category.NETWORK, Palette.CATEGORY_NETWORK).entrySet()) {
+                SpellModuleType.Category.EFFECTS, Palette.CATEGORY_EFFECTS).entrySet()) {
             int categoryHue = hue(entry.getValue());
             int distance = Math.abs(errorHue - categoryHue);
             int wrapped = Math.min(distance, 360 - distance);
@@ -127,15 +127,29 @@ class PaletteTest {
 
     /**
      * Каркас холодный, категории тёплые — иначе панель и её содержимое спорят.
+     *
+     * <p>Исключение — {@code EFFECTS}: он фиолетовый. Причина не в капризе, а в
+     * том, что тридцать семь эффектов в тёплом ряду встали бы впритык к урону
+     * и лечению, и игрок перестал бы различать, где бьёт, а где лечит. При этом
+     * смысл правила («категория не должна выглядеть как холодный каркас») всё
+     * равно соблюдён: холодный каркас живёт в диапазоне 170-260 градусов, а
+     * фиолетовый эффектов стоит на 274-м — рядом, но снаружи.
      */
     @Test
     void каркасХолодныйКатегорииТёплые() {
         assertTrue(isCool(Palette.ACCENT), "основной акцент должен быть холодным");
         assertTrue(isCool(Palette.BORDER_LIGHT), "рамка должна быть холодной");
         for (SpellModuleType.Category category : SpellModuleType.Category.values()) {
-            assertTrue(isWarm(Palette.category(category)),
+            int accent = Palette.category(category);
+            if (category == SpellModuleType.Category.EFFECTS) {
+                assertFalse(isCool(accent),
+                        "эффекты не должны совпадать с холодным каркасом: "
+                                + hue(accent) + "°");
+                continue;
+            }
+            assertTrue(isWarm(accent),
                     "категория " + category + " должна быть тёплой, а не "
-                            + hue(Palette.category(category)) + "°");
+                            + hue(accent) + "°");
         }
     }
 

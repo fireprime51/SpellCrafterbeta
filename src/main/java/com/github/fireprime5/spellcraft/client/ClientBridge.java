@@ -1,7 +1,8 @@
 package com.github.fireprime5.spellcraft.client;
 
-import com.github.fireprime5.spellcraft.network.ManaSyncPayload;
+import com.github.fireprime5.spellcraft.network.AbyssEnergySyncPayload;
 import com.github.fireprime5.spellcraft.network.OpenBuilderPayload;
+import com.github.fireprime5.spellcraft.network.OpenMachineGridPayload;
 import com.github.fireprime5.spellcraft.network.SpellResultPayload;
 import com.github.fireprime5.spellcraft.network.SyncSpellGraphPayload;
 
@@ -19,9 +20,23 @@ public final class ClientBridge {
 
         void onSpellResult(SpellResultPayload payload);
 
-        void onMana(ManaSyncPayload payload);
+        void onMana(AbyssEnergySyncPayload payload);
 
         void onOpenBuilder(OpenBuilderPayload payload);
+
+        void onOpenMachineGrid(OpenMachineGridPayload payload);
+
+        /** Схема модулей машины пришла с сервера. */
+        void onSyncMachineGrid(
+                com.github.fireprime5.spellcraft.network.SyncMachineGridPayload payload);
+
+        /** Схема модулей брони пришла с сервера. */
+        void onSyncArmorGraph(
+                com.github.fireprime5.spellcraft.network.SyncArmorGraphPayload payload);
+
+        /** Открыть конструктор модулей брони. */
+        void onOpenArmorBuilder(
+                com.github.fireprime5.spellcraft.network.OpenArmorBuilderPayload payload);
 
         void onLibrary(com.github.fireprime5.spellcraft.network.LibrarySyncPayload payload);
     }
@@ -36,11 +51,30 @@ public final class ClientBridge {
         }
 
         @Override
-        public void onMana(ManaSyncPayload payload) {
+        public void onMana(AbyssEnergySyncPayload payload) {
         }
 
         @Override
         public void onOpenBuilder(OpenBuilderPayload payload) {
+        }
+
+        @Override
+        public void onOpenMachineGrid(OpenMachineGridPayload payload) {
+        }
+
+        @Override
+        public void onSyncMachineGrid(
+                com.github.fireprime5.spellcraft.network.SyncMachineGridPayload payload) {
+        }
+
+        @Override
+        public void onSyncArmorGraph(
+                com.github.fireprime5.spellcraft.network.SyncArmorGraphPayload payload) {
+        }
+
+        @Override
+        public void onOpenArmorBuilder(
+                com.github.fireprime5.spellcraft.network.OpenArmorBuilderPayload payload) {
         }
 
         @Override

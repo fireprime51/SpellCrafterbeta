@@ -1,6 +1,5 @@
 package com.github.fireprime5.spellcraft.network;
 
-import com.github.fireprime5.spellcraft.energy.ManaCapability;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -11,11 +10,11 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
  * Клиент -> Сервер: «открыл построитель» — сервер один раз присылает
- * сохранённый граф и ману, а потом клиент просто шлёт изменения.
+ * сохранённый граф и энергию бездны, а потом клиент просто шлёт изменения.
  *
  * Периодического запроса графа нет специально: пока идёт обмен пакетами,
  * правка игрока могла откатываться старой версией ответа (заметная задержка).
- * Для маны есть отдельный лёгкий запрос {@link RequestManaPayload}.
+ * Для энергии бездны есть отдельный лёгкий запрос {@link RequestAbyssEnergyPayload}.
  */
 public record RequestSpellGraphPayload(int unused) implements CustomPacketPayload {
 
@@ -36,9 +35,22 @@ public record RequestSpellGraphPayload(int unused) implements CustomPacketPayloa
     }
 
     public static void handle(RequestSpellGraphPayload payload, ServerPlayer player) {
+        if (!rateLimit().allow(player.getGameProfile().getId())) {
+            return;
+        }
         PacketDistributor.sendToPlayer(player, new SyncSpellGraphPayload(
                 com.github.fireprime5.spellcraft.data.PlayerSpellStore.getCopy(player)));
-        ManaSyncPayload.sendTo(player);
+        AbyssEnergySyncPayload.sendTo(player);
         PacketDistributor.sendToPlayer(player, new OpenBuilderPayload(0));
+    }
+
+    private static final PacketRateLimiter RATE_LIMIT = new PacketRateLimiter(5);
+
+    private static PacketRateLimiter rateLimit() {
+        return RATE_LIMIT;
+    }
+
+    public static void cleanup(java.util.UUID playerId) {
+        RATE_LIMIT.cleanup(playerId);
     }
 }

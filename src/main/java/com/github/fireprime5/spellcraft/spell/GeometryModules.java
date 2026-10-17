@@ -45,6 +45,15 @@ public final class GeometryModules {
     /** Направление считается вырожденным ближе этого, чтобы не делить на ноль. */
     private static final double EPS = 1e-9;
 
+    /**
+     * Потолок длины отрезка для «Блоков в линии», в блоках.
+     *
+     * <p>С запасом перекрывает {@code SpellContext.MAX_RANGE}: обе точки
+     * доступны, поэтому честная дальность между ними около 48 блоков, а круглый
+     * предел в 256 берёт и то, и другое с запасом.
+     */
+    public static final int MAX_LINE_BLOCKS = 256;
+
     public static void registerAll() {
         // ---------------------------------------------------------- векторы
 
@@ -62,7 +71,7 @@ public final class GeometryModules {
             @Override public int manaCost() { return 3; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in,
                                           List<SpellValue> out) {
-                out.add(SpellValue.of(new Vec3(in.get(0).asNumber(), in.get(1).asNumber(),
+                out.add(finite(new Vec3(in.get(0).asNumber(), in.get(1).asNumber(),
                         in.get(2).asNumber()), SpellValue.Kind.VECTOR));
             }
         });
@@ -190,8 +199,11 @@ public final class GeometryModules {
         // «Расстояния между точками»: то возвращает точную длину, это —
         // целое число блоков, то есть ровно то, с чем сравнивают дальность
         // луча или натяжение растяжки.
-        in2("line_blocks", POINT, POINT, NUMBER, 4,
-                (ctx, a, b) -> SpellValue.of(blocksInLine(a.asVec(), b.asVec())));
+        in2("line_blocks", POINT, POINT, NUMBER, 4, (ctx, a, b) -> {
+            ctx.requireInRange(a.asVec());
+            ctx.requireInRange(b.asVec());
+            return SpellValue.of(blocksInLine(a.asVec(), b.asVec()));
+        });
     }
 
     // ---------------------------------------------------------- конструкторы
@@ -379,11 +391,22 @@ public final class GeometryModules {
      * самой длинной оси, соседние позиции склеиваются, и каждая считается один
      * раз. Отрезок в 10 блоков отвечает 11 — столько же, сколько блоков он
      * действительно пересекает, включая оба конца.
+     *
+     * <p>Длина отрезка ограничена сверху {@link #MAX_LINE_BLOCKS}. Точки в
+     * схеме собираются арифметикой от произвольных чисел, и две точки в
+     * трёхстах миллионах блоков apart давали {@code steps = 3·10⁸}: цикл
+     * крутился бы на серверном потоке столько же раз. Приведение к целому
+     * тут не спасает — переполнение double насыщается до
+     * {@code Integer.MAX_VALUE}, то есть к худшему случаю.
      */
     static int blocksInLine(Vec3 from, Vec3 to) {
         Vec3 delta = to.subtract(from);
-        int steps = (int) Math.ceil(Math.max(Math.abs(delta.x),
-                Math.max(Math.abs(delta.y), Math.abs(delta.z))));
+        double longest = Math.max(Math.abs(delta.x),
+                Math.max(Math.abs(delta.y), Math.abs(delta.z)));
+        if (!Double.isFinite(longest) || longest > MAX_LINE_BLOCKS) {
+            throw new SpellContext.SpellException("line.too_long", MAX_LINE_BLOCKS);
+        }
+        int steps = (int) Math.ceil(longest);
         if (steps == 0) {
             return 1;
         }
@@ -401,5 +424,21 @@ public final class GeometryModules {
 
     private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * Отсекает нечисловые координаты.
+     *
+     * <p>В схему можно положить что угодно, поэтому на вход арифметики могут
+     * прийти NaN или бесконечности (деление на ноль, умножение на 1e308). Дальше
+     * они уехали бы в точку, а оттуда — в {@code BlockPos.containing} и
+     * {@code setBlock}: нечисловая координата там ведёт себя как ноль, то есть
+     * игрок чинит блок у себя под ногами вместо блока на другом конце луча.
+     */
+    private static SpellValue finite(Vec3 v, SpellValue.Kind kind) {
+        if (!Double.isFinite(v.x) || !Double.isFinite(v.y) || !Double.isFinite(v.z)) {
+            throw new SpellContext.SpellException("value.not_finite");
+        }
+        return SpellValue.of(v, kind);
     }
 }

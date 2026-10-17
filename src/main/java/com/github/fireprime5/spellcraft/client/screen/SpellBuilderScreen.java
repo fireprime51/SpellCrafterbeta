@@ -2,8 +2,7 @@ package com.github.fireprime5.spellcraft.client.screen;
 
 import com.github.fireprime5.spellcraft.Spellcraft;
 import com.github.fireprime5.spellcraft.client.ClientSpellState;
-import com.github.fireprime5.spellcraft.network.RequestManaPayload;
-import com.github.fireprime5.spellcraft.network.RequestSpellGraphPayload;
+import com.github.fireprime5.spellcraft.network.RequestAbyssEnergyPayload;
 import com.github.fireprime5.spellcraft.network.UpdateSpellGraphPayload;
 import com.github.fireprime5.spellcraft.spell.SpellGraph;
 import com.github.fireprime5.spellcraft.spell.SpellIssue;
@@ -44,14 +43,14 @@ public class SpellBuilderScreen extends Screen {
 
     private SpellGraph graph = new SpellGraph();
     private SpellGraph lastServerGraph;
-    /** Есть несохранённые локальные правки — серверный граф их не перезаписывает. */
-    private boolean dirty;
 
     private ProgramCanvas canvas;
     private SidePanelWidget side;
     private ModulePalette palette;
 
     private int selectedNode = -1;
+    /** Дополнительные узлы для групповых операций (Alt+клик). */
+    private final java.util.LinkedHashSet<Integer> selectedNodes = new java.util.LinkedHashSet<>();
 
     /** Нажатый модуль: по нему отличим клик от перетаскивания на отпускании. */
     private int clickNode = -1;
@@ -63,7 +62,8 @@ public class SpellBuilderScreen extends Screen {
 
     /** Остался ли модуль в той же клетке, из которой его нажали. */
     private boolean sameCell(int node, int gridX, int gridY) {
-        if (node >= graph.nodes.size()) {
+        // обе границы: индекс -1 здесь тоже возможен, а get(-1) падает
+        if (node < 0 || node >= graph.nodes.size()) {
             return false;
         }
         var n = graph.nodes.get(node);
@@ -81,15 +81,115 @@ public class SpellBuilderScreen extends Screen {
 
     /** Активное панорамирование сетки (ЛКМ/СКМ по пустому месту). */
     private boolean panning;
+
+    /** Позиция машины в режиме сетки; null в обычном конструкторе. */
+    private final net.minecraft.core.BlockPos machinePos;
+    /** Тип машины: smelter, extractor, tank. */
+    private final String machineKind;
+    /** Разрешённые модули; null в обычном режиме, когда разрешено всё. */
+    private java.util.Set<String> allowed;
+
     private double panAnchorX;
     private double panAnchorY;
 
+    /**
+     * Обычный режим: конструктор заклинания из гримуара.
+     */
     public SpellBuilderScreen() {
-        super(Component.translatable("gui.spellcraft.spell_builder"));
-        ClientSpellState.setBuilderOpen(true);
+        this(null, null);
+    }
+
+    /**
+     * Режим с собственным заголовком.
+     *
+     * <p>Заголовок передаётся в {@code super()}, а не выставляется после: у
+     * {@link Screen} заголовок неизменяемый, поэтому фабрика брони не могла бы
+     * переименовать экран и называла бы схему нагрудника «построителем
+     * заклинаний».
+     */
+    private SpellBuilderScreen(Component title) {
+        super(title);
+        this.machinePos = null;
+        this.machineKind = null;
         this.graph = ClientSpellState.getGraph() != null
                 ? ClientSpellState.getGraph().copy()
-                : new SpellGraph();
+                : new com.github.fireprime5.spellcraft.spell.SpellGraph();
+    }
+
+    /**
+     * Режим модульной брони.
+     *
+     * <p>Схема пришла с сервера отдельным пакетом: клиент открывает тот же
+     * конструктор, но палитра показывает только модули брони, а правка
+     * возвращается в нагрудник, а не в гримуар.
+     */
+    public static SpellBuilderScreen forArmor(net.minecraft.world.InteractionHand hand) {
+        SpellBuilderScreen screen = new SpellBuilderScreen(Component.translatable(
+                "gui.spellcraft.armor_builder"));
+        screen.armorHand = hand;
+        screen.graph = com.github.fireprime5.spellcraft.client.ClientArmorState.graph().copy();
+        screen.allowed = com.github.fireprime5.spellcraft.armor.ModularSchema.allowed();
+        return screen;
+    }
+
+    /**
+     * Заголовок по режиму.
+     *
+     * <p>Экран один на три режима, поэтому заголовок выбирается здесь: в режиме
+     * брони «Построитель заклинаний» называл бы схему, которая к заклинанию
+     * отношения не имеет.
+     */
+    private static Component titleFor(net.minecraft.core.BlockPos pos) {
+        if (pos != null) {
+            return Component.translatable("gui.spellcraft.machine_grid");
+        }
+        return Component.translatable("gui.spellcraft.spell_builder");
+    }
+
+    /** Рука с нагрудником в режиме брони; null в остальных режимах. */
+    private net.minecraft.world.InteractionHand armorHand;
+
+    /**
+     * Режим модульной сетки машины.
+     *
+     * <p>Экран тот же самый — так игрок не изучает второй интерфейс. Отличается
+     * набором модулей в палитре и тем, что схема уходит обратно в блок.
+     *
+     * @param pos где стоит машина; null — обычный режим
+     * @param kind тип машины: smelter, extractor, tank
+     */
+    public SpellBuilderScreen(net.minecraft.core.BlockPos pos, String kind) {
+        super(titleFor(pos));
+        this.machinePos = pos;
+        this.machineKind = kind;
+        this.allowed = pos == null
+                ? null
+                : com.github.fireprime5.spellcraft.machine.MachineGrid.Sets.forMachine(kind);
+        if (pos != null) {
+            // Схема машины лежит в отдельном состоянии клиента. Брать её из
+            // ClientSpellState нельзя: там лежит заклинание игрока, и правка
+            // сетки записала бы модули прямо в заклинание.
+            this.graph = com.github.fireprime5.spellcraft.client.ClientMachineState
+                    .graph().copy();
+        } else {
+            this.graph = ClientSpellState.getGraph() != null
+                    ? ClientSpellState.getGraph().copy() : new SpellGraph();
+        }
+    }
+
+    /** Позиция машины в режиме сетки или null в обычном режиме. */
+    public net.minecraft.core.BlockPos machinePos() {
+        return machinePos;
+    }
+
+    /** Разрешённые машиной модули или null в обычном режиме. */
+    public java.util.Set<String> allowedModules() {
+        return allowed;
+    }
+
+    /** Режим ли это модульной сетки машины. */
+    public boolean isMachineGrid() {
+        return machinePos != null;
     }
 
     @Override
@@ -99,30 +199,61 @@ public class SpellBuilderScreen extends Screen {
         // прозрачность панелей из конфига
         UiKit.applyOpacity(com.github.fireprime5.spellcraft.config.SpellConfig.get().uiOpacity);
 
-        // рисуем в натуральных GUI-координатах: любой pose().scale() мылит текст
-        vw = Math.max(UiKit.MIN_W, width);
-        vh = Math.max(UiKit.MIN_H, height);
+        // рисуем в натуральных GUI-координатах: любой pose().scale() мылит текст.
+        // Потолок снизу обязателен: на маленьком окне (низкое разрешение или
+        // высокий GUI-масштаб) vw/vh уходили за width/height, и вместе с ними
+        // фон, боковая панель и подвал — то есть интерфейс рисовался за краем.
+        vw = Math.min(width, Math.max(UiKit.MIN_W, width));
+        vh = Math.min(height, Math.max(UiKit.MIN_H, height));
 
         // Холст занимает всю высоту: сетка идёт от верхнего до нижнего края.
         areaX = PAD;
         areaY = PAD;
-        areaW = vw - PANEL_W - PAD * 3;
+        areaW = Math.max(60, vw - PANEL_W - PAD * 3);
         areaH = vh - PAD * 2;
-        if (areaW < 120) {
-            areaW = Math.max(120, vw - PANEL_W - PAD * 3);
+
+        // Холст переживает ресайз: создавать его заново нельзя, иначе терялись
+        // зум, панорама и начатое перетаскивание модуля. init() зовётся и при
+        // открытии экрана, и при каждом ресайзе окна — это разные случаи.
+        if (canvas == null) {
+            canvas = new ProgramCanvas(areaX, areaY, areaW, areaH);
+        } else {
+            canvas.resize(areaX, areaY, areaW, areaH);
         }
 
-        canvas = new ProgramCanvas(areaX, areaY, areaW, areaH);
         // Правая колонка тоже на всю высоту: раньше сверху оставалась пустая
         // полоса под плашку с энергией, а теперь энергия живёт в подвале
         // колонки.
         side = new SidePanelWidget(vw - PANEL_W - PAD, PAD, PANEL_W, vh - PAD * 2);
 
         if (palette != null) {
-            palette.init(minecraft);
+            palette.resize();
         }
-
     }
+
+    /**
+     * Готов ли экран к отрисовке.
+     *
+     * <p>Виджеты создаются в {@link #init()}, но {@code render()} не обязан
+     * прийти после него: моды, подменяющие экран (ModernUI, Figura, TRender —
+     * все они в списке загрузки), могут позвать отрисовку раньше. Без проверки
+     * первый же кадр падал с NPE и ронял игру целиком вместо одного кадра.
+     *
+     * @return false — кадр пропускается, виджеты ещё не созданы
+     */
+    private boolean widgetsReady() {
+        if (canvas != null && side != null) {
+            return true;
+        }
+        if (!warnedAboutWidgets) {
+            warnedAboutWidgets = true;
+            com.github.fireprime5.spellcraft.Spellcraft.LOGGER.warn(
+                    "Spellcraft: builder got a frame before init(), skipping it");
+        }
+        return false;
+    }
+
+    private boolean warnedAboutWidgets;
 
     /**
      * Запоминает позицию палитры, если её только что отпустили после перетаскивания.
@@ -159,6 +290,10 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public void tick() {
+        if (!widgetsReady()) {
+            return;
+        }
+
         knownModifiers = new java.util.HashSet<>(ClientSpellState.knownModifiers());
         knownModules = new java.util.HashSet<>();
         for (String id : ClientSpellState.knownModules()) {
@@ -173,10 +308,10 @@ public class SpellBuilderScreen extends Screen {
         if (++libSyncTicks % 40 == 0) {
             com.github.fireprime5.spellcraft.network.LibrarySyncRequest.send();
         }
-        // раз в секунду обновляем только ману: граф не перезапрашиваем,
+        // раз в секунду обновляем только энергию бездны: граф не перезапрашиваем,
         // иначе правки могут откатываться с задержкой
         if (++syncTicks % 20 == 0) {
-            RequestManaPayload.send();
+            RequestAbyssEnergyPayload.send();
         }
         if (toastTicks > 0) {
             toastTicks--;
@@ -187,15 +322,11 @@ public class SpellBuilderScreen extends Screen {
         resolvePendingLearn();
     }
 
-    // --- перевод координат мыши в виртуальные ---
-
-    private double vx(double mouseX) {
-        return mouseX;
-    }
-
-    private double vy(double mouseY) {
-        return mouseY;
-    }
+    // --- координаты мыши ---
+    //
+    // Раньше здесь стояли vx()/vy(): функции, которые возвращали mouseX и mouseY
+    // без изменений. Остались они от удалённого масштабирования интерфейса и
+    // только запутывали чтение: при вызове не видно, что преобразования нет.
 
     @Override
     public void renderBackground(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
@@ -206,22 +337,44 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        // сервер присылает сохранённый граф только при открытии экрана;
-        // применяем его ровно один раз, локальные правки приоритетнее
-        var fromServer = ClientSpellState.getGraph();
+        if (!widgetsReady()) {
+            return;
+        }
+        // сервер присылает сохранённый граф при открытии экрана и в ответ на
+        // правку. Отличать «подтверждение моей правки» от «сервер прислал
+        // другую схему» нужно по содержимому: сравнение ссылок не годится,
+        // подтверждение приходит уже другим объектом.
+        //
+        // ClientSpellState хранит ЗАКЛИНАНИЕ игрока. В режиме брони и сетки
+        // машины граф живёт в ClientArmorState/ClientMachineState, и тянуть
+        // сюда заклинание нельзя: иначе в конструкторе брони открывалось бы
+        // сохранённое заклинание вместо схемы нагрудника.
+        var fromServer = armorHand == null && machinePos == null
+                ? ClientSpellState.getGraph()
+                : null;
         if (fromServer != null && fromServer != lastServerGraph) {
             lastServerGraph = fromServer;
-            if (!dirty) {
+            if (!fromServer.sameAs(graph)) {
                 graph = fromServer.copy();
                 selectedNode = -1;
+                selectedNodes.clear();
+                // сервер мог прислать более короткую схему: начатая связь,
+                // перетаскивание и меню модификаторов указывали бы на индексы,
+                // которых в новом графе нет — сбрасываем, иначе render/mouseReleased
+                // роняли бы экран с IndexOutOfBounds
+                canvas.linkFrom = -1;
+                canvas.dragNode = -1;
+                if (modifierNode >= 0) {
+                    closeModifierMenu();
+                }
                 graphRevision++;
             }
         }
 
         // целочисленный масштаб — иначе GUI мылится
 
-        double mx = vx(mouseX);
-        double my = vy(mouseY);
+        double mx = mouseX;
+        double my = mouseY;
         gfx.fill(0, 0, vw, vh, UiKit.BG);
 
         // холст
@@ -230,19 +383,23 @@ public class SpellBuilderScreen extends Screen {
         updateCellHighlight(mx, my);
         // ошибки рисуются на блоках, поэтому список подаём ДО отрисовки холста
         canvas.setErrorNodes(ClientSpellState.errorNodes());
-        canvas.render(gfx, graph, mx, my, selectedNode);
+        canvas.render(gfx, graph, mx, my, selectedNode, selectedNodes);
+        renderPortTooltip(gfx, mx, my);
 
         // правая панель
+        // hoveredNode живёт в холсте и обновляется при отрисовке, поэтому его
+        // индекс мог устареть после правки графа — верхняя граница обязательна
+        int hovered = canvas.hoveredNode();
         SpellModuleType selectedType = selectedNode >= 0 && selectedNode < graph.nodes.size()
                 ? SpellModules.get(graph.nodes.get(selectedNode).moduleId)
-                : canvas.hoveredNode() >= 0
-                ? SpellModules.get(graph.nodes.get(canvas.hoveredNode()).moduleId) : null;
+                : hovered >= 0 && hovered < graph.nodes.size()
+                ? SpellModules.get(graph.nodes.get(hovered).moduleId) : null;
         List<SpellIssue> issues = issues();
         // стек: результат последнего каста + живой предпросмотр до каста
-        side.update(selectedType, ClientSpellState.getLastResult(), issues,
-                cachedPreview, knownModules, learnedModules, totalModules);
-        side.setEnergy(ClientSpellState.getMana(), graph.totalManaCost(),
-                ClientSpellState.isInfiniteMana());
+        side.update(selectedType, ClientSpellState.getLastResult(), issues, cachedPreview);
+        side.setEnergy(ClientSpellState.getAbyss(),
+                graph.totalAbyssCost(ClientSpellState.getMaxAbyss()),
+                ClientSpellState.isInfiniteAbyss());
         side.render(gfx);
 
         renderBottomBar(gfx);
@@ -272,25 +429,22 @@ public class SpellBuilderScreen extends Screen {
      *  - после ПКМ — та ячейка, по которой кликнули.
      */
     private void updateCellHighlight(double mx, double my) {
-        int cx = Integer.MIN_VALUE;
-        int cy = Integer.MIN_VALUE;
-
-        // ячейка ЗАКРЕПЛЕНА при ПКМ: курсор в палитре её не меняет
-        if (palette != null && pendingCellX > Integer.MIN_VALUE
-                && pendingCellY > Integer.MIN_VALUE) {
-            cx = pendingCellX;
-            cy = pendingCellY;
-        } else if (canvas.dragNode >= 0 && canvas.dragNode < graph.nodes.size()) {
-            var node = graph.nodes.get(canvas.dragNode);
-            cx = node.gridX;
-            cy = node.gridY;
-        }
-
-        if (cx == Integer.MIN_VALUE) {
-            canvas.clearHighlight();
+        // «ячейки нет» — это -1, а не Integer.MIN_VALUE: поля инициализируются
+        // и сбрасываются в -1, и никто не писал MIN_VALUE. Старая проверка
+        // (-1 > Integer.MIN_VALUE) всегда проходила, поэтому невыбранная ячейка
+        // подсвечивалась как (-1, -1)
+        if (palette != null && pendingCellX >= 0 && pendingCellY >= 0) {
+            // ячейка ЗАКРЕПЛЕНА при ПКМ: курсор в палитре её не меняет
+            canvas.highlight(pendingCellX, pendingCellY,
+                    occupied(pendingCellX, pendingCellY));
             return;
         }
-        canvas.highlight(cx, cy, occupied(cx, cy));
+        if (canvas.dragNode >= 0 && canvas.dragNode < graph.nodes.size()) {
+            var node = graph.nodes.get(canvas.dragNode);
+            canvas.highlight(node.gridX, node.gridY, occupied(node.gridX, node.gridY));
+            return;
+        }
+        canvas.clearHighlight();
     }
 
     /**
@@ -332,12 +486,35 @@ public class SpellBuilderScreen extends Screen {
         gfx.drawString(font, hint, hx + 4, hy + 3, UiKit.TEXT, false);
     }
 
+    /** Keeps the type cue readable for colour-blind users and at small zooms. */
+    private void renderPortTooltip(GuiGraphics gfx, double mx, double my) {
+        int node = canvas.nodeAt(graph, mx, my);
+        if (node < 0 || node >= graph.nodes.size()) {
+            return;
+        }
+        SpellModuleType type = SpellModules.get(graph.nodes.get(node).moduleId);
+        if (type == null) {
+            return;
+        }
+        int input = canvas.inputStripAt(graph, mx, my);
+        int output = canvas.outputStripAt(graph, mx, my);
+        PortType port = input >= 0 && input < type.inputs() ? type.inputType(input)
+                : output >= 0 && output < type.outputs() ? type.outputType(output) : null;
+        if (port != null) {
+            gfx.renderTooltip(font, port.label(), (int) mx, (int) my);
+        }
+    }
+
     // --- Ввод ---
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        double mx = vx(mouseX);
-        double my = vy(mouseY);
+        if (!widgetsReady()) {
+            return false;
+        }
+
+        double mx = mouseX;
+        double my = mouseY;
         if (library != null) {
             if (library.mouseClicked(mx, my, button)) {
                 return true;
@@ -396,15 +573,26 @@ public class SpellBuilderScreen extends Screen {
             }
 
             if (button == 0 && type != null) {
+                if (hasAltDown()) {
+                    if (!selectedNodes.add(node)) selectedNodes.remove(node);
+                    selectedNode = node;
+                    canvas.dragNode = -1;
+                    return true;
+                }
+                selectedNodes.clear();
+                selectedNodes.add(node);
                 if (hasShiftDown()) {
+                    remember();
                     graph.removeNode(node);
-                    if (canvas.linkFrom == node) {
-                        canvas.linkFrom = -1;
-                    }
-                    selectedNode = -1;
-                    if (modifierNode == node) {
+                    // индексы сдвинулись: связь и меню модификаторов указывали
+                    // бы на чужой узел — сбрасываем безусловно, а не только
+                    // когда индекс совпадает с удалённым
+                    canvas.linkFrom = -1;
+                    if (modifierNode >= 0) {
                         closeModifierMenu();
                     }
+                    selectedNode = -1;
+                    selectedNodes.clear();
                     pushGraph();
                     return true;
                 }
@@ -492,7 +680,9 @@ public class SpellBuilderScreen extends Screen {
                 pendingCellX = canvas.cellX(mx);
                 pendingCellY = canvas.cellY(my);
                 targetCellText = cellText(pendingCellX, pendingCellY)
-                        + (occupied(pendingCellX, pendingCellY) ? " (занята)" : "");
+                        + (occupied(pendingCellX, pendingCellY)
+                                ? " (" + Component.translatable("gui.spellcraft.occupied").getString() + ")"
+                                : "");
                 openPalette(mouseX, mouseY, pendingCellX, pendingCellY);
                 return true;
             }
@@ -503,8 +693,8 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        double mx = vx(mouseX);
-        double my = vy(mouseY);
+        double mx = mouseX;
+        double my = mouseY;
 
         if (palette != null && button == 0 && insidePalette(mx, my)) {
             // перетаскивание заканчивается здесь: позицию сохраняем
@@ -560,21 +750,26 @@ public class SpellBuilderScreen extends Screen {
             return true;
         }
 
-        if (button == 0 && canvas.linkFrom >= 0) {
+        if (button == 0 && canvas.linkFrom >= 0 && canvas.linkFrom < graph.nodes.size()) {
             int node = canvas.nodeAt(graph, mx, my);
             if (node >= 0 && node != canvas.linkFrom) {
                 var srcType = com.github.fireprime5.spellcraft.spell.SpellModules.get(
                         graph.nodes.get(canvas.linkFrom).moduleId);
+                // порт связи мог устареть после замены графа: зажимаем по
+                // числу выходов источника, иначе outputType читал бы мимо массива
+                int srcOut = srcType != null
+                        ? Math.min(canvas.linkPort, Math.max(0, srcType.outputs() - 1))
+                        : 0;
                 // сначала точный порт, иначе — любой подходящий свободный вход блока
                 int inPort = canvas.inputPortAt(graph, mx, my);
                 if (inPort < 0) {
                     inPort = canvas.freeCompatibleInput(graph, node,
-                            srcType != null ? srcType.outputType(canvas.linkPort)
+                            srcType != null ? srcType.outputType(srcOut)
                                     : com.github.fireprime5.spellcraft.spell.PortType.ANY);
                 }
                 if (inPort >= 0) {
                     remember();
-                    graph.connect(canvas.linkFrom, canvas.linkPort, node, inPort);
+                    graph.connect(canvas.linkFrom, srcOut, node, inPort);
                     selectedNode = node;
                     pushGraph();
                 }
@@ -595,8 +790,12 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        double mx = vx(mouseX);
-        double my = vy(mouseY);
+        if (!widgetsReady()) {
+            return false;
+        }
+
+        double mx = mouseX;
+        double my = mouseY;
         if (palette != null && palette.mouseDragged(mx, my, button)) {
             return true;
         }
@@ -616,6 +815,13 @@ public class SpellBuilderScreen extends Screen {
                     return true;
                 }
                 SpellNode node = graph.nodes.get(canvas.dragNode);
+                // модуль нельзя положить на занятую клетку: два блока в одной
+                // ячейке делают нижний из них некликабельным (сверху всегда
+                // выигрывает нарисованный последним), и добраться до него
+                // можно было только через Ctrl+Z
+                if (occupiedByOther(cellX, cellY, canvas.dragNode)) {
+                    return true;
+                }
                 node.gridX = cellX;
                 node.gridY = cellY;
                 // положение изменилось — проверка графа уже неактуальна
@@ -705,6 +911,10 @@ public class SpellBuilderScreen extends Screen {
                     if (st != null && st.inputType(inPort).accepts(clickedType.outputType(p))
                             && graph.connect(clicked, p, target, inPort)) {
                         selectedNode = target;
+                        // без remember() связь не попадала в историю: Ctrl+Z
+                        // отменял не её, а правку до неё, что хуже, чем
+                        // отсутствия отмены вовсе
+                        remember();
                         pushGraph();
                         return;
                     }
@@ -768,12 +978,30 @@ public class SpellBuilderScreen extends Screen {
 
         if (source >= 0 && chosenIn >= 0 && graph.connect(source, sourcePort, clicked, chosenIn)) {
             selectedNode = clicked;
+            remember();
             pushGraph();
         }
     }
 
+    /** Занята ли клетка кем-то, кроме самого этого узла. */
+    private boolean occupiedByOther(int gridX, int gridY, int self) {
+        for (int i = 0; i < graph.nodes.size(); i++) {
+            if (i == self) {
+                continue;
+            }
+            SpellNode other = graph.nodes.get(i);
+            if (other.gridX == gridX && other.gridY == gridY) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Первый вход, который свободен и принимает данный тип (или -1). */
     private int firstFreeInput(int node, SpellModuleType type, PortType from) {
+        if (node < 0 || node >= graph.nodes.size()) {
+            return -1;
+        }
         SpellNode n = graph.nodes.get(node);
         int fallback = -1;
         for (int p = 0; p < type.inputs(); p++) {
@@ -844,23 +1072,23 @@ public class SpellBuilderScreen extends Screen {
                 ClientSpellState.knownModifiers().size());
     }
 
-    /** Просит сервер изучить модификатор: тратится мана, дальше шанс. */
+    /** Просит сервер изучить модификатор: тратится энергия бездны, дальше шанс. */
     private void requestLearnModifier(com.github.fireprime5.spellcraft.spell.SpellModifier modifier) {
         if (pendingLearnId != null) {
             toast(Component.translatable("modifier.spellcraft.wait"));
             return;
         }
-        int mana = ClientSpellState.getMana();
+        int abyss = ClientSpellState.getAbyss();
         int price = learnPrice(modifier);
-        // при бесконечной мане проверка пропускается: сервер всё равно
+        // при бесконечной энергии бездны проверка пропускается: сервер всё равно
         // списывать не будет, и отказ по клиентскому счёту был бы ложным
-        if (!ClientSpellState.isInfiniteMana() && mana < price) {
-            toast(Component.translatable("modifier.spellcraft.not_enough_mana", price - mana));
+        if (!ClientSpellState.isInfiniteAbyss() && abyss < price) {
+            toast(Component.translatable("modifier.spellcraft.not_enough_mana", price - abyss));
             return;
         }
         pendingLearnId = modifier.id();
         pendingLearnNode = modifierNode;
-        pendingLearnMana = mana;
+        pendingLearnMana = abyss;
         pendingLearnTicks = 60;
         com.github.fireprime5.spellcraft.network.ModifierLearnPayload.send(modifier.id());
         toast(Component.translatable("modifier.spellcraft.trying",
@@ -892,10 +1120,10 @@ public class SpellBuilderScreen extends Screen {
             clearPendingLearn();
             return;
         }
-        // при бесконечной мане списания не происходит вовсе, поэтому падение счёта
+        // при бесконечной энергии бездны списания не происходит вовсе, поэтому падение счёта
         // не может означать «не хватило денег» — ждём только самого ответа
-        boolean manaSpent = !ClientSpellState.isInfiniteMana()
-                && ClientSpellState.getMana() < pendingLearnMana;
+        boolean manaSpent = !ClientSpellState.isInfiniteAbyss()
+                && ClientSpellState.getAbyss() < pendingLearnMana;
         if (manaSpent || pendingLearnTicks <= 0) {
             toast(Component.translatable("modifier.spellcraft.learn_failed",
                     Component.translatable("modifier." + pendingLearnId).getString()));
@@ -917,46 +1145,70 @@ public class SpellBuilderScreen extends Screen {
     private void openPalette(double screenMouseX, double screenMouseY, int cellX, int cellY) {
         pendingCellX = cellX;
         pendingCellY = cellY;
-        double mx = vx(screenMouseX);
-        double my = vy(screenMouseY);
+        double mx = screenMouseX;
+        double my = screenMouseY;
         // позиция палитры: закреплённая в конфиге или рядом с курсором (первый раз)
         var config = com.github.fireprime5.spellcraft.config.SpellConfig.get();
-        int maxX = Math.max(PAD, vw - ModulePalette.W - PANEL_W - PAD * 2);
-        int maxY = Math.max(PAD, vh - ModulePalette.H - PAD);
-        int px;
-        int py;
-        if (config.paletteX >= 0 || config.paletteY >= 0) {
-            px = Math.max(PAD, Math.min(config.paletteX, maxX));
-            py = Math.max(PAD, Math.min(config.paletteY, maxY));
-        } else {
-            px = (int) Math.max(PAD, Math.min(mx - ModulePalette.W / 2, maxX));
-            py = (int) Math.max(PAD, Math.min(my - ModulePalette.H / 2, maxY));
-        }
-        palette = new ModulePalette(px, py, lastCategory, type -> {
+        // размер восстанавливаем до расчёта позиции: он влияет на габариты,
+        // а кламп по правому-нижнему краю нужен уже здесь
+        palette = new ModulePalette(PAD, PAD, lastCategory, type -> {
         }, () -> palette = null);
+        palette.setMode(paletteMode());
+        palette.setSizeLevel(Math.clamp(config.paletteSizeLevel, 0, ModulePalette.maxSizeLevel()));
+        // кламп живёт в самой палитре: без него панель уезжала за нижний и
+        // правый край экрана и оставалась там до следующего открытия
+        int maxX = Math.max(PAD, vw - palette.width() - PANEL_W - PAD * 2);
+        int maxY = Math.max(PAD, vh - palette.height() - PAD);
+        palette.setBounds(PAD, PAD, maxX, maxY);
+        if (config.paletteX >= 0 || config.paletteY >= 0) {
+            palette.moveTo(Math.max(PAD, Math.min(config.paletteX, maxX)),
+                    Math.max(PAD, Math.min(config.paletteY, maxY)));
+        } else {
+            palette.moveTo((int) Math.max(PAD, Math.min(mx - palette.width() / 2, maxX)),
+                    (int) Math.max(PAD, Math.min(my - palette.height() / 2, maxY)));
+        }
         palette.setUnlocked(unlockedIds(), true);
-        palette.setOnLocked(type -> toast(Component.translatable("gui.spellcraft.locked_toast",
-                Component.translatable(type.nameKey()).getString())));
+        if (allowed != null) {
+            palette.setFilter(type -> allowed.contains(type.id().getPath()));
+        }
         palette.init(minecraft);
     }
 
-    /** Закрыть палитру модулей. */
-    private void closePalette() {
-        palette = null;
+    /** Режим палитры: он решает, какие модули вообще показывать. */
+    private ModulePalette.Mode paletteMode() {
+        if (armorHand != null) {
+            return ModulePalette.Mode.ARMOR;
+        }
+        return machinePos != null ? ModulePalette.Mode.MACHINE : ModulePalette.Mode.SPELL;
     }
 
-    /** id модулей, изученных игроком (+ стартовые). */
+    /** id модулей, изученных игроком (+ стартовые) и тех, что открылись вместе с ними. */
     private java.util.Set<net.minecraft.resources.ResourceLocation> unlockedIds() {
         var set = new java.util.HashSet<>(
                 com.github.fireprime5.spellcraft.spell.StartModules.all().stream()
                         .map(com.github.fireprime5.spellcraft.Spellcraft::id)
                         .toList());
         set.addAll(knownModules);
-        // модификации открываются, если изучен их требуемый модуль
-        for (var type : com.github.fireprime5.spellcraft.spell.SpellModules.all()) {
-            var need = type.requiresModule();
-            if (need != null && set.contains(need.toString())) {
-                set.add(type.id());
+        // модули открываются по предпосылкам, и цепочки бывают длинные:
+        // «сложение → умножение → степень» разворачивается в три шага, а
+        // один проход по списку вскрыл бы только первый. Поэтому повторяем,
+        // пока открывается хоть что-то, и ограничиваем число шагов длиной
+        // списка — защита от зацикливания, если предпосылки вдруг образуют кольцо
+        var all = com.github.fireprime5.spellcraft.spell.SpellModules.all();
+        for (int pass = 0; pass < all.size(); pass++) {
+            boolean changed = false;
+            for (var type : all) {
+                var need = type.requiresModule();
+                // именно ResourceLocation: set это Set<ResourceLocation>, а
+                // need.toString() даёт String, и contains сравнивал их через
+                // equals — то есть всегда возвращал false и разблокировка
+                // зависимых модулей не срабатывала никогда
+                if (need != null && set.contains(need) && set.add(type.id())) {
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
             }
         }
         return set;
@@ -974,10 +1226,6 @@ public class SpellBuilderScreen extends Screen {
     private static final int HISTORY_LIMIT = 40;
     private boolean historyBusy;
 
-    private void placeModule(SpellModuleType type) {
-        placeModule(type, pendingCellX, pendingCellY);
-    }
-
     private void placeModule(SpellModuleType type, int preferredX, int preferredY) {
         if (!unlockedIds().contains(type.id())) {
             toast(Component.translatable("gui.spellcraft.locked_toast",
@@ -987,7 +1235,7 @@ public class SpellBuilderScreen extends Screen {
         }
         lastCategory = type.category();
         // если выбранная ячейка свободна — модуль встаёт именно в неё
-        int[] cell = (preferredX > Integer.MIN_VALUE && !occupied(preferredX, preferredY))
+        int[] cell = (preferredX >= 0 && !occupied(preferredX, preferredY))
                 ? new int[]{preferredX, preferredY}
                 : findFreeCell(preferredX, preferredY);
         if (cell != null) {
@@ -998,7 +1246,7 @@ public class SpellBuilderScreen extends Screen {
             targetCellText = cell[0] == preferredX && cell[1] == preferredY
                     ? cellText(cell[0], cell[1])
                     : cellText(cell[0], cell[1]) + " (" + cellText(preferredX, preferredY)
-                    + " занята)";
+                    + " " + Component.translatable("gui.spellcraft.occupied").getString() + ")";
             pushGraph();
         }
         pendingCellX = -1;
@@ -1046,9 +1294,27 @@ public class SpellBuilderScreen extends Screen {
     }
 
     private void pushGraph() {
-        dirty = true;
         graphRevision++;
-        PacketDistributor.sendToServer(new UpdateSpellGraphPayload(graph.copy()));
+        // ошибки прошлого каста привязаны к номерам узлов, а любая правка
+        // графа эти номера сдвигает (удаление уменьшает их на единицу, отмена и
+        // вставка подменяют граф целиком). Красная рамка вставала бы на
+        // соседний модуль, поэтому после правки она снимается
+        if (canvas != null) {
+            canvas.setErrorNodes(java.util.Set.of());
+        }
+        lastPushedRevision = graphRevision;
+        if (armorHand != null) {
+            // схема брони уходит в нагрудник: сервер проверяет модули и кладёт
+            // результат в компонент предмета
+            PacketDistributor.sendToServer(new com.github.fireprime5.spellcraft.network
+                    .SaveArmorGraphPayload(armorHand, graph.copy()));
+        } else if (machinePos != null) {
+            // сетка машины: сервер проверит расстояние и разрешённые модули
+            PacketDistributor.sendToServer(new com.github.fireprime5.spellcraft.network
+                    .SaveMachineGridPayload(machinePos, machineKind, graph.copy()));
+        } else {
+            PacketDistributor.sendToServer(new UpdateSpellGraphPayload(graph.copy()));
+        }
     }
 
     /**
@@ -1088,12 +1354,47 @@ public class SpellBuilderScreen extends Screen {
         try {
             graph = history.pop();
             selectedNode = -1;
-            canvas.dragNode = -1;
-            canvas.linkFrom = -1;
+            selectedNodes.clear();
+            if (canvas != null) {
+                canvas.dragNode = -1;
+                canvas.linkFrom = -1;
+            }
             pushGraph();
         } finally {
             historyBusy = false;
         }
+    }
+
+    private java.util.List<Integer> layoutSelection() {
+        selectedNodes.removeIf(i -> i < 0 || i >= graph.nodes.size());
+        if (selectedNodes.size() < 2) return java.util.List.of();
+        return new java.util.ArrayList<>(selectedNodes);
+    }
+
+    private void alignSelection(char action) {
+        var ids = layoutSelection();
+        if (ids.isEmpty()) return;
+        int target;
+        if (action == 'L') target = ids.stream().mapToInt(i -> graph.nodes.get(i).gridX).min().orElse(0);
+        else if (action == 'R') target = ids.stream().mapToInt(i -> graph.nodes.get(i).gridX).max().orElse(0);
+        else if (action == 'T') target = ids.stream().mapToInt(i -> graph.nodes.get(i).gridY).min().orElse(0);
+        else target = ids.stream().mapToInt(i -> graph.nodes.get(i).gridY).max().orElse(0);
+        remember();
+        for (int i : ids) { var n = graph.nodes.get(i); if (action == 'L' || action == 'R') n.gridX = target; else n.gridY = target; }
+        pushGraph();
+        toast(Component.translatable("gui.spellcraft.aligned"));
+    }
+
+    private void distributeSelection(boolean horizontal) {
+        var ids = layoutSelection();
+        if (ids.isEmpty()) return;
+        ids.sort(java.util.Comparator.comparingInt(i -> horizontal ? graph.nodes.get(i).gridX : graph.nodes.get(i).gridY));
+        int first = horizontal ? graph.nodes.get(ids.get(0)).gridX : graph.nodes.get(ids.get(0)).gridY;
+        int last = horizontal ? graph.nodes.get(ids.get(ids.size()-1)).gridX : graph.nodes.get(ids.get(ids.size()-1)).gridY;
+        remember();
+        for (int p = 1; p < ids.size() - 1; p++) { int v = first + Math.round((last-first) * p / (float)(ids.size()-1)); var n=graph.nodes.get(ids.get(p)); if(horizontal)n.gridX=v;else n.gridY=v; }
+        pushGraph();
+        toast(Component.translatable("gui.spellcraft.distributed"));
     }
 
     /** Дублировать выделенный модуль со смещением на клетку вправо. */
@@ -1182,13 +1483,20 @@ public class SpellBuilderScreen extends Screen {
         }
         SpellGraph graph = new SpellGraph();
         String[] lines = text.split("\n");
-        for (int i = 1; i < lines.length && graph.nodes.size() < SpellGraph.MAX_NODES; i++) {
+        for (int i = 1; i < lines.length; i++) {
             String[] parts = lines[i].trim().split(";");
             if (parts.length < 3) {
                 continue;
             }
-            var id = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(Spellcraft.MODID,
-                    parts[0]);
+            // разбор id тоже внутри try: fromNamespaceAndPath бросает
+            // InvalidNamespaceException на любой заглавной букве или пробеле, а
+            // буфер обмена правится руками. Раньше это исключение уходило наружу
+            // и роняло весь экран билдера.
+            var id = net.minecraft.resources.ResourceLocation.tryParse(Spellcraft.MODID + ":"
+                    + parts[0]);
+            if (id == null) {
+                continue;
+            }
             SpellNode node;
             try {
                 node = graph.addNode(id, Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
@@ -1310,11 +1618,24 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double dx, double dy) {
-        double mx = vx(mouseX);
-        double my = vy(mouseY);
-        // колесо над палитрой прокручивает её список, а не холст
+        if (!widgetsReady()) {
+            return false;
+        }
+
+        double mx = mouseX;
+        double my = mouseY;
+        // Ctrl + колесо над палитрой меняет её размер. Без Ctrl колесо
+        // прокручивает список: так же, как в палитре файлов, и случайно
+        // изменить размер при прокрутке невозможно
         if (palette != null) {
-            palette.mouseScrolled(mx, my, dx, dy);
+            if (hasControlDown() && palette.inside(mx, my)) {
+                if (resizePalette(palette.sizeLevel() + (dy > 0 ? 1 : -1))) {
+                    return true;
+                }
+            }
+            if (palette.mouseScrolled(mx, my, dx, dy)) {
+                return true;
+            }
             return true;
         }
         if (canvas.inside(mx, my)) {
@@ -1325,6 +1646,28 @@ public class SpellBuilderScreen extends Screen {
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, dx, dy);
+    }
+
+    /** Задан ли размер палитры. true, если он изменился. */
+    private boolean resizePalette(int level) {
+        if (palette == null || !palette.setSizeLevel(level)) {
+            return false;
+        }
+        // габариты изменились — панель держим внутри экрана, иначе её правый
+        // или нижний край уехал бы за окно и стал недоступен
+        palette.setBounds(PAD, PAD,
+                Math.max(PAD, vw - palette.width() - PANEL_W - PAD * 2),
+                Math.max(PAD, vh - palette.height() - PAD));
+        palette.moveTo(palette.x(), palette.y());
+        var config = com.github.fireprime5.spellcraft.config.SpellConfig.get();
+        config.paletteSizeLevel = palette.sizeLevel();
+        config.paletteX = palette.x();
+        config.paletteY = palette.y();
+        config.save();
+        toast(Component.translatable(palette.sizeLevel() >= palette.maxSizeLevel()
+                ? "gui.spellcraft.palette_largest" : "gui.spellcraft.palette_sized",
+                palette.sizeLevel() + 1, palette.maxSizeLevel() + 1));
+        return true;
     }
 
     /**
@@ -1341,6 +1684,10 @@ public class SpellBuilderScreen extends Screen {
      */
     @Override
     public boolean charTyped(char code, int modifiers) {
+        if (!widgetsReady()) {
+            return false;
+        }
+
         if (palette != null && isFocused(palette.searchBox())) {
             return palette.charTyped(code, modifiers);
         }
@@ -1384,6 +1731,10 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!widgetsReady()) {
+            return false;
+        }
+
         // Escape разбирает окна сверху вниз — в порядке их отрисовки — и только
         // потом закрывает сам конструктор. Раньше проверка «закрыть экран» стояла
         // первой, и ветки закрытия палитры, библиотеки, меню модификаторов и
@@ -1417,20 +1768,19 @@ public class SpellBuilderScreen extends Screen {
                 int px = (vw - LibraryPanel.W) / 2;
                 int py = (vh - LibraryPanel.H) / 2;
                 library = new LibraryPanel(px, py,
-                        name -> {
-                            // сервер и так держит актуальный граф: каждая правка
-                            // уже отправлена через pushGraph()
-                            com.github.fireprime5.spellcraft.network.SaveSpellPayload.send(name);
-                            toast(Component.translatable("library.spellcraft.saved"));
-                        },
-                        index -> {
-                            com.github.fireprime5.spellcraft.network.LoadSpellPayload.send(index);
-                            toast(Component.translatable("library.spellcraft.loaded"));
-                        },
-                        index -> {
-                            com.github.fireprime5.spellcraft.network.DeleteSpellPayload.send(index);
-                            toast(Component.translatable("library.spellcraft.deleted"));
-                        },
+                        // подтверждения нет: сервер может отказать (все 8
+                        // слотов заняты — тогда он шлёт своё сообщение), а
+                        // раньше тост «сохранено» показывался в любом случае,
+                        // и игрок ждал результата, которого не будет.
+                        // Список библиотеки приезжает по LibrarySyncPayload —
+                        // он и служит подтверждением.
+                        name ->
+                                com.github.fireprime5.spellcraft.network.SaveSpellPayload.send(name),
+                        index ->
+                                com.github.fireprime5.spellcraft.network.LoadSpellPayload.send(index),
+                        index ->
+                                com.github.fireprime5.spellcraft.network.DeleteSpellPayload
+                                        .send(index),
                         () -> library = null);
                 library.init(minecraft);
             }
@@ -1448,11 +1798,29 @@ public class SpellBuilderScreen extends Screen {
             return true;
         }
 
+        // Home is a viewport-only recovery action: it never changes the
+        // spell graph, selection, or pending edits.
+        if (keyCode == GLFW.GLFW_KEY_HOME && !hasControlDown()) {
+            canvas.resetView();
+            toast(Component.translatable("gui.spellcraft.canvas_reset"));
+            return true;
+        }
+
         boolean ctrl = hasControlDown();
 
         if (ctrl && keyCode == GLFW.GLFW_KEY_Z) {
             undo();
             return true;
+        }
+        // Group layout shortcuts: Alt+click builds a selection, then Ctrl+Alt
+        // keeps the ordinary editor shortcuts free for copy/undo.
+        if (ctrl && hasAltDown()) {
+            if (keyCode == GLFW.GLFW_KEY_L) { alignSelection('L'); return true; }
+            if (keyCode == GLFW.GLFW_KEY_R) { alignSelection('R'); return true; }
+            if (keyCode == GLFW.GLFW_KEY_T) { alignSelection('T'); return true; }
+            if (keyCode == GLFW.GLFW_KEY_B) { alignSelection('B'); return true; }
+            if (keyCode == GLFW.GLFW_KEY_H) { distributeSelection(true); return true; }
+            if (keyCode == GLFW.GLFW_KEY_V) { distributeSelection(false); return true; }
         }
         if (ctrl && keyCode == GLFW.GLFW_KEY_D) {
             duplicateSelected();
@@ -1469,10 +1837,15 @@ public class SpellBuilderScreen extends Screen {
         if (keyCode == GLFW.GLFW_KEY_DELETE && selectedNode >= 0) {
             remember();
             graph.removeNode(selectedNode);
-            if (modifierNode == selectedNode) {
+            // removeNode сдвигает индексы: связь и открытое меню указывали бы
+            // на чужой (или отсутствующий) узел — роняли бы экран или применяли
+            // модификаторы не туда. Поэтому сбрасываем и связь, и меню всегда.
+            canvas.linkFrom = -1;
+            if (modifierNode >= 0) {
                 closeModifierMenu();
             }
             selectedNode = -1;
+            selectedNodes.clear();
             pushGraph();
             return true;
         }
@@ -1487,18 +1860,29 @@ public class SpellBuilderScreen extends Screen {
 
     @Override
     public void removed() {
-        ClientSpellState.setBuilderOpen(false);
-        canvas.dragNode = -1;
-        canvas.linkFrom = -1;
+        // removed() зовётся и при закрытии, и при смене мира; холст к этому
+        // моменту мог и не появиться, а NPE здесь уронил бы игру на выходе из
+        // редактора
+        if (canvas != null) {
+            canvas.dragNode = -1;
+            canvas.linkFrom = -1;
+        }
         panning = false;
         super.removed();
     }
 
     @Override
     public void onClose() {
-        pushGraph();
+        // незакрытый экран без правок не должен слать полный NBT графа:
+        // правок не было — значит и отправлять нечего
+        if (graphRevision != lastPushedRevision) {
+            pushGraph();
+        }
         if (minecraft != null) {
             minecraft.setScreen(null);
         }
     }
+
+    /** Ревизия графа на момент последней отправки на сервер. */
+    private int lastPushedRevision = -1;
 }

@@ -17,10 +17,14 @@ java {
 
 repositories {
     mavenCentral()
+    maven {
+        url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+    }
 }
 
 dependencies {
     // Minecraft/NeoForge классы нужны и тестам
+    implementation 'software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.2'
     testImplementation files(sourceSets.main.compileClasspath)
     testRuntimeOnly files(sourceSets.main.runtimeClasspath)
 

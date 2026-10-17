@@ -4,21 +4,21 @@ import com.github.fireprime5.spellcraft.network.SpellResultPayload;
 import com.github.fireprime5.spellcraft.spell.SpellGraph;
 
 /**
- * Клиентское зеркало состояния заклинаний: текущий граф, результат каста, мана.
+ * Клиентское зеркало состояния заклинаний: текущий граф, результат каста, энергия бездны.
  * Класс не содержит клиентских зависимостей, поэтому его безопасно читать
- * из общих классов (например, из тикера для синхронизации маны).
+ * из общих классов (например, из тикера для синхронизации энергии бездны).
  */
 public final class ClientSpellState {
 
     private static SpellGraph graph;
     private static SpellResultPayload lastResult;
-    private static int mana;
-    /** Бесконечная мана включена: панель рисует «∞» вместо числа. */
-    private static boolean infiniteMana;
+    private static int abyss;
+    private static int maxAbyss;
+    /** Бесконечная энергия бездны включена: панель рисует «∞» вместо числа. */
+    private static boolean infiniteAbyss;
     private static java.util.List<String> known = java.util.List.of();
     private static java.util.List<String> knownMods = java.util.List.of();
     private static int total;
-    private static boolean builderOpen;
     private static java.util.List<String> libraryNames = java.util.List.of();
     private static java.util.List<Integer> librarySizes = java.util.List.of();
     /** Индексы модулей, на которых произошла ошибка в последнем касте. */
@@ -43,28 +43,40 @@ public final class ClientSpellState {
         lastResult = result;
     }
 
-    public static int getMana() {
-        return mana;
+    public static int getAbyss() {
+        return abyss;
     }
 
-    public static void setMana(int value) {
-        mana = value;
+    public static void setAbyss(int value) {
+        abyss = value;
     }
 
-    public static void setMana(int value, java.util.List<String> knownModules,
+    /**
+     * Потолок энергии бездны, пришедший с сервера.
+     *
+     * <p>Нужен панели для показа настоящей цены каста: у части модулей она
+     * зависит от кошелька игрока («Расщепление» стоит ровно всю энергию бездны), и без
+     * потолка на клиенте нечем посчитать её для показа.
+     */
+    public static int getMaxAbyss() {
+        return maxAbyss;
+    }
+
+    public static void setAbyss(int value, int max, java.util.List<String> knownModules,
                                java.util.List<String> knownModifiers, int totalCount) {
-        mana = value;
+        abyss = value;
+        maxAbyss = max;
         known = knownModules;
         knownMods = knownModifiers;
         total = totalCount;
     }
 
-    public static boolean isInfiniteMana() {
-        return infiniteMana;
+    public static boolean isInfiniteAbyss() {
+        return infiniteAbyss;
     }
 
-    public static void setInfiniteMana(boolean value) {
-        infiniteMana = value;
+    public static void setInfiniteAbyss(boolean value) {
+        infiniteAbyss = value;
     }
 
     public static java.util.List<String> knownModifiers() {
@@ -98,13 +110,5 @@ public final class ClientSpellState {
 
     public static void setErrorNodes(java.util.Set<Integer> nodes) {
         errorNodes = nodes == null ? java.util.Set.of() : nodes;
-    }
-
-    public static boolean isBuilderOpen() {
-        return builderOpen;
-    }
-
-    public static void setBuilderOpen(boolean value) {
-        builderOpen = value;
     }
 }

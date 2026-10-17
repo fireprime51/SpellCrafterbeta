@@ -34,9 +34,13 @@ public record LibrarySyncPayload(List<String> names, List<Integer> sizes)
 
     private static LibrarySyncPayload read(RegistryFriendlyByteBuf buf) {
         int size = buf.readVarInt();
+        // верхняя граница совпадает с SpellLibrary.MAX_SPELLS: клиенту не
+        // приходит смысла ни в чём, а недоверенное число из буфера не должно
+        // превращаться в ArrayList на миллиард элементов
+        int limit = Math.clamp(size, 0, 64);
         List<String> names = new ArrayList<>();
         List<Integer> sizes = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < limit; i++) {
             names.add(buf.readUtf(64));
             sizes.add(buf.readVarInt());
         }

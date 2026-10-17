@@ -1,6 +1,6 @@
 package com.github.fireprime5.spellcraft.client;
 
-import com.github.fireprime5.spellcraft.network.ManaSyncPayload;
+import com.github.fireprime5.spellcraft.network.AbyssEnergySyncPayload;
 import com.github.fireprime5.spellcraft.network.OpenBuilderPayload;
 import com.github.fireprime5.spellcraft.network.SpellResultPayload;
 import com.github.fireprime5.spellcraft.network.SyncSpellGraphPayload;
@@ -12,7 +12,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -30,7 +30,7 @@ public final class ClientBridgeInstaller {
      * обработчике нажатия: иначе переключение ловило бы и повтор клавиши при
      * удержании, и игрок прокликивал бы все восемь вариантов за одно нажатие.
      */
-    private static final KeyMapping NEXT_PALETTE = new KeyMapping(
+    static final KeyMapping NEXT_PALETTE = new KeyMapping(
             "key.spellcraft.next_palette", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9,
             "key.categories.spellcraft");
 
@@ -39,19 +39,23 @@ public final class ClientBridgeInstaller {
         event.register(NEXT_PALETTE);
     }
 
+    /** Экран плавильни вешается на её меню. */
     @SubscribeEvent
-    public static void onClientTick(ClientTickEvent.Post event) {
-        if (!NEXT_PALETTE.consumeClick()) {
-            return;
-        }
-        var config = com.github.fireprime5.spellcraft.config.SpellConfig.get();
-        if (config.moduleHue >= 0) {
-            // был выбран свободный оттенок: сначала возвращаемся к варианту
-            config.moduleHue = -1;
-            config.save();
-            com.github.fireprime5.spellcraft.client.screen.PaletteCatalog.apply(config.modulePalette, null);
-        }
-        com.github.fireprime5.spellcraft.client.screen.PaletteCatalog.cycleAndReport(config);
+    public static void onMenuScreens(
+            net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
+        event.register(com.github.fireprime5.spellcraft.registry.ModMenus.SMELTER.get(),
+                com.github.fireprime5.spellcraft.client.screen.SmelterScreen::new);
+    }
+
+    @SubscribeEvent
+    public static void onRegisterBlockEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(
+                com.github.fireprime5.spellcraft.registry.ModBlocks.DA_ANIMATED_ENTITY.get(),
+                context -> new DaAnimatedRenderer());
+        // линии сети рисуются рендерером: в свойствах блока их набор не помещается
+        event.registerBlockEntityRenderer(
+                com.github.fireprime5.spellcraft.registry.ModBlocks.WIRE_ENTITY.get(),
+                context -> new com.github.fireprime5.spellcraft.client.WireRenderer());
     }
 
     @SubscribeEvent
@@ -82,11 +86,11 @@ public final class ClientBridgeInstaller {
             }
 
             @Override
-            public void onMana(ManaSyncPayload payload) {
+            public void onMana(AbyssEnergySyncPayload payload) {
                 Minecraft.getInstance().execute(() -> {
-                    ClientSpellState.setMana(payload.mana(),
+                    ClientSpellState.setAbyss(payload.abyss(), payload.maxAbyss(),
                             payload.knownModules(), payload.knownModifiers(), payload.total());
-                    ClientSpellState.setInfiniteMana(payload.infinite());
+                    ClientSpellState.setInfiniteAbyss(payload.infinite());
                 });
             }
 
@@ -98,14 +102,75 @@ public final class ClientBridgeInstaller {
             }
 
             @Override
+            public void onSyncMachineGrid(
+                    com.github.fireprime5.spellcraft.network.SyncMachineGridPayload payload) {
+                // Обработчики пакетов идут не из основного потока, а состояние
+                // конструктора читает уже главный поток. Без execute() граф мог
+                // прийти позже открытия экрана — и конструктор открылся бы пустым
+                Minecraft.getInstance().execute(() -> com.github.fireprime5.spellcraft.client
+                        .ClientMachineState.set(payload.pos(), payload.kind(),
+                                payload.tag().isEmpty()
+                                        ? new com.github.fireprime5.spellcraft.spell.SpellGraph()
+                                        : com.github.fireprime5.spellcraft.spell.SpellGraph
+                                                .load(payload.tag())));
+            }
+
+            @Override
+            public void onSyncArmorGraph(
+                    com.github.fireprime5.spellcraft.network.SyncArmorGraphPayload payload) {
+                Minecraft.getInstance().execute(() -> com.github.fireprime5.spellcraft.client
+                        .ClientArmorState.set(payload.hand(),
+                                payload.tag().isEmpty()
+                                        ? new com.github.fireprime5.spellcraft.spell.SpellGraph()
+                                        : com.github.fireprime5.spellcraft.spell.SpellGraph
+                                                .load(payload.tag())));
+            }
+
+            @Override
+            public void onOpenMachineGrid(
+                    com.github.fireprime5.spellcraft.network.OpenMachineGridPayload payload) {
+                Minecraft.getInstance().execute(() -> openScreen(
+                        new com.github.fireprime5.spellcraft.client.screen.SpellBuilderScreen(
+                                payload.pos(), payload.kind())));
+            }
+
+            @Override
             public void onOpenBuilder(OpenBuilderPayload payload) {
-                Minecraft.getInstance().execute(() -> {
-                    Minecraft mc = Minecraft.getInstance();
-                    if (mc.screen == null) {
-                        mc.setScreen(new com.github.fireprime5.spellcraft.client.screen.SpellBuilderScreen());
-                    }
-                });
+                Minecraft.getInstance().execute(() ->
+                        openScreen(new com.github.fireprime5.spellcraft.client.screen.SpellBuilderScreen()));
+            }
+
+            @Override
+            public void onOpenArmorBuilder(
+                    com.github.fireprime5.spellcraft.network.OpenArmorBuilderPayload payload) {
+                Minecraft.getInstance().execute(() -> openScreen(
+                        com.github.fireprime5.spellcraft.client.screen.SpellBuilderScreen
+                                .forArmor(payload.hand())));
             }
         });
+    }
+
+    /**
+     * Открывает конструктор, закрывая то, что открыто сейчас.
+     *
+     * <p>Раньше стояло {@code if (mc.screen == null)}, и из-за этого нагрудник
+     * не открывался по правому клику в инвентаре: в момент ответа сервера
+     * экран инвентаря был открыт, условие не выполнялось, и пакет просто терялся.
+     * Игрок видел, что нажал, и ничего не происходило.
+     *
+     * <p>Теперь открытый экран просто заменяется. Особый случай — уже открытый
+     * конструктор: его не пересоздаём, иначе правка схемы, сделанная до
+     * подтверждения сервера, потерялась бы.
+     */
+    private static void openScreen(net.minecraft.client.gui.screens.Screen screen) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen == screen) {
+            return;
+        }
+        if (mc.screen instanceof com.github.fireprime5.spellcraft.client.screen.SpellBuilderScreen) {
+            // уже в конструкторе — второй ответ не должен переоткрывать его
+            return;
+        }
+        mc.setScreen(screen);
     }
 }

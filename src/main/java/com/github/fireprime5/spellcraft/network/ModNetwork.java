@@ -36,11 +36,11 @@ public final class ModNetwork {
                 });
 
         registrar.playToServer(
-                RequestManaPayload.TYPE,
-                RequestManaPayload.STREAM_CODEC,
+                RequestAbyssEnergyPayload.TYPE,
+                RequestAbyssEnergyPayload.STREAM_CODEC,
                 (payload, context) -> {
                     if (context.player() instanceof ServerPlayer sp) {
-                        RequestManaPayload.handle(payload, sp);
+                        RequestAbyssEnergyPayload.handle(payload, sp);
                     }
                 });
 
@@ -115,13 +115,71 @@ public final class ModNetwork {
                 (payload, context) -> ClientBridge.handler().onLibrary(payload));
 
         registrar.playToClient(
-                ManaSyncPayload.TYPE,
-                ManaSyncPayload.STREAM_CODEC,
+                AbyssEnergySyncPayload.TYPE,
+                AbyssEnergySyncPayload.STREAM_CODEC,
                 (payload, context) -> ClientBridge.handler().onMana(payload));
 
         registrar.playToClient(
                 OpenBuilderPayload.TYPE,
                 OpenBuilderPayload.STREAM_CODEC,
                 (payload, context) -> ClientBridge.handler().onOpenBuilder(payload));
+
+        // --- сетка модулей машины ---
+        registrar.playToServer(
+                RequestMachineGridPayload.TYPE,
+                RequestMachineGridPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof ServerPlayer sp) {
+                        RequestMachineGridPayload.handle(payload, sp);
+                    }
+                });
+
+        registrar.playToServer(
+                SaveMachineGridPayload.TYPE,
+                SaveMachineGridPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof ServerPlayer sp) {
+                        SaveMachineGridPayload.handle(payload, sp);
+                    }
+                });
+
+        registrar.playToClient(
+                SyncMachineGridPayload.TYPE,
+                SyncMachineGridPayload.STREAM_CODEC,
+                (payload, context) -> ClientBridge.handler().onSyncMachineGrid(payload));
+
+        registrar.playToClient(
+                OpenMachineGridPayload.TYPE,
+                OpenMachineGridPayload.STREAM_CODEC,
+                (payload, context) -> ClientBridge.handler().onOpenMachineGrid(payload));
+
+        // --- модульная броня: клиент просит схему, сервер отдаёт и сохраняет ---
+        registrar.playToServer(
+                RequestArmorGraphPayload.TYPE,
+                RequestArmorGraphPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof ServerPlayer sp) {
+                        RequestArmorGraphPayload.handle(payload, sp);
+                    }
+                });
+
+        registrar.playToServer(
+                SaveArmorGraphPayload.TYPE,
+                SaveArmorGraphPayload.STREAM_CODEC,
+                (payload, context) -> {
+                    if (context.player() instanceof ServerPlayer sp) {
+                        SaveArmorGraphPayload.handle(payload, sp);
+                    }
+                });
+
+        registrar.playToClient(
+                SyncArmorGraphPayload.TYPE,
+                SyncArmorGraphPayload.STREAM_CODEC,
+                (payload, context) -> ClientBridge.handler().onSyncArmorGraph(payload));
+
+        registrar.playToClient(
+                OpenArmorBuilderPayload.TYPE,
+                OpenArmorBuilderPayload.STREAM_CODEC,
+                (payload, context) -> ClientBridge.handler().onOpenArmorBuilder(payload));
     }
 }

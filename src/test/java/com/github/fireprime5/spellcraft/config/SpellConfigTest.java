@@ -41,7 +41,7 @@ class SpellConfigTest {
     @Test
     void нулевойПотолокМаныДопустим() {
         // потолок 0 -- это не «сломанный конфиг», а осознанный выбор сервера:
-        // заклинания перестают стоить ману совсем
+        // заклинания перестают стоить энергию бездны совсем
         SpellConfig config = new SpellConfig();
         config.playerEnergyCapacity = 0;
         config.clampValues();

@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "spellcraft:block/conveyor", "y": 180 },
+    "facing=east": { "model": "spellcraft:block/conveyor", "y": 270 },
+    "facing=south": { "model": "spellcraft:block/conveyor" },
+    "facing=west": { "model": "spellcraft:block/conveyor", "y": 90 }
+  }
+}

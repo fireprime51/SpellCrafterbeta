@@ -1,6 +1,7 @@
 package com.github.fireprime5.spellcraft.spell;
 
 import net.minecraft.network.chat.Component;
+import com.github.fireprime5.spellcraft.Spellcraft;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -17,14 +18,14 @@ public abstract class SpellModuleType {
         ACTIONS("actions"),
         LOGIC("logic"),
         /**
-         * Зарезервированный слот шкалы.
+         * Эффекты — отдельным разделом.
          *
-         * <p>Модулей этой категории в моде нет: она осталась пятой ступенью
-         * тёплой шкалы, чтобы палитра (assets/spellcraft/palette.json) и её
-         * варианты оставались общей шкалой из пяти цветов. Добавит кто-то
-         * категорию — это будет шестой цвет, и проверка палитры упадёт.
+         * <p>Их тридцать семь, и среди них есть смертельные. Если держать их в
+         * «Действиях», вкладка превращается в простыню, где полезное «Лечение»
+         * стоит рядом с «Иссушение». Отдельный раздел даёт им место и позволяет
+         * положить в палитру цвет, который не путается с боевыми модулями.
          */
-        NETWORK("network");
+        EFFECTS("effects");
 
         private final String key;
 
@@ -150,12 +151,55 @@ public abstract class SpellModuleType {
         return sb.toString();
     }
 
-    public int maxInstances() {
+    /**
+ * Подраздел модуля внутри категории — см. {@link SpellSubsections}.
+ *
+ * <p>Поиск в палитре учитывает название подраздела, поэтому «стек» находит и
+ * «Взять из стека», и сам подраздел «Стек».
+ */
+    public String subCategory() {
+        return SpellSubsections.of(this);
+    }
+
+    public Component subName() {
+        return Component.translatable(SpellSubsections.nameKey(subCategory()));
+    }
+
+public int maxInstances() {
         return -1;
     }
 
     public int manaCost() {
         return 0;
+    }
+
+    /**
+     * Стоимость каста с учётом состояния игрока.
+     *
+     * <p>Нужна модулям, цена которых не выводится из одного числа: «Расщепление»
+     * сжигает весь кошелёк, поэтому стоит ровно столько, сколько энергии бездны у игрока
+     * сейчас есть. Обычным модулям хватает {@link #manaCost()}.
+     *
+     * @param manaCapacity потолок энергии бездны из конфига; 0 — неизвестно (палитра,
+     *                    предпросмотр), тогда берётся обычная цена
+     */
+    public int castCost(int manaCapacity) {
+        return manaCost();
+    }
+
+    /**
+     * Сколько энергии бездны модуль ест в нагруднике, в секунду.
+     *
+     * <p>Раньше налог считался «по одной единице за узел за 40 тиков», и этого
+     * хватало только на дешёвые модули. Барьер держит урон отовсюду непрерывно
+     * и стоит в шестьдесят раз дороже полёта, поэтому расход пришлось назвать
+     * явно и в нормальных единицах — в секунду.
+     *
+     * <p>Значение умножается на длительность налогового периода в тиках, делённую
+     * на 20, то есть на число секунд в периоде.
+     */
+    public double armorUpkeepPerSecond() {
+        return 0.5;
     }
 
     /** Модификаторы, доступные этому модулю (галочки в меню по ПКМ). */
@@ -185,11 +229,29 @@ public abstract class SpellModuleType {
     }
 
     /**
-     * Модуль, который нужно сначала изучить, чтобы этот стал доступен
-     * (например, модификация «Удача» открывается после «Область»).
+     * Модуль, который нужно сначала изучить, чтобы этот стал доступен.
+     *
+     * <p>Само правило живёт в {@link SpellPrerequisites}: поле было написано,
+     * но не переопределялось ни одним модулем, из-за чего 51 модуль был
+     * недостижим вообще — вместе с базовой арифметикой.
      */
     public ResourceLocation requiresModule() {
-        return null;
+        String required = SpellPrerequisites.of(this);
+        return required == null ? null : Spellcraft.id(required);
+    }
+
+    /**
+     * Личный модуль игрока: выдаётся «Анализом себя» и не добывается сканированием.
+     *
+     * <p>У игрока такой модуль ровно один, и он не в общей прогрессии — его
+     * нельзя открыть цепочкой предпосылок или наградой за сканирование. Палитра
+     * такие модули прячет полностью: серым показывать нечего, за ними нет
+     * награды, а обещание «просканируй» было бы враньём.
+     *
+     * @see com.github.fireprime5.spellcraft.spell.UniqueModules
+     */
+    public boolean isUnique() {
+        return SpellSubsections.isUnique(this);
     }
 
     public void execute(SpellContext ctx, List<SpellValue> inputs, List<SpellValue> outputs) {

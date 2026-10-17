@@ -45,8 +45,11 @@ class ItemSpriteTest {
             String id = sprite.getFileName().toString().replace(".png", "");
             Path model = Path.of("src/main/resources/assets/spellcraft/models/item/" + id + ".json");
             assertTrue(Files.exists(model), "нет модели предмета для " + id);
-            assertTrue(Files.readString(model).contains("spellcraft:item/" + id),
-                    "модель " + id + " не ссылается на свой спрайт");
+            String modelJson = Files.readString(model);
+            boolean hasOwnSprite = modelJson.contains("spellcraft:item/" + id);
+            boolean usesPlacedBlockGeometry = modelJson.contains("spellcraft:block/");
+            assertTrue(hasOwnSprite || usesPlacedBlockGeometry,
+                    "модель " + id + " не ссылается на спрайт или геометрию блока");
         }
     }
 

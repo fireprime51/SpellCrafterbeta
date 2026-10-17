@@ -1,7 +1,6 @@
 package com.github.fireprime5.spellcraft.spell;
 
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -14,7 +13,35 @@ import net.minecraft.world.phys.Vec3;
 public record SpellValue(Kind kind, double number, Object ref) {
 
     public enum Kind {
-        NUMBER, ENTITY, POSITION, VECTOR, ITEM
+        NUMBER, ENTITY, POSITION, VECTOR, ITEM, LOCATION
+    }
+
+
+    /**
+     * Адрес в мире: измерение вместе с точкой.
+     *
+     * <p>Отдельная запись, а не «точка плюс где-то сбоку измерение»: у точки
+     * без измерения нет смысла — координаты (100, 64, 100) в обычном мире и в
+     * Незере это разные адреса, и портал обязан знать, в какой из них вести.
+     *
+     * <p>Измерение хранится строкой ({@code minecraft:the_nether}), а не
+     * {@code ResourceKey}: значение переживает пакет между сервером и клиентом,
+     * где серверных ключей нет.
+     */
+    public record Place(String dimension, Vec3 pos) {
+
+        public Place {
+            if (dimension == null || dimension.isBlank()) {
+                throw new SpellContext.SpellException("place.no_dimension");
+            }
+            if (pos == null) {
+                throw new SpellContext.SpellException("place.bad_position");
+            }
+        }
+
+        public BlockPos blockPos() {
+            return BlockPos.containing(pos);
+        }
     }
 
     public static SpellValue of(double d) {
@@ -31,6 +58,23 @@ public record SpellValue(Kind kind, double number, Object ref) {
 
     public static SpellValue of(ItemStack s) {
         return new SpellValue(Kind.ITEM, 0, s);
+    }
+
+    /** Адрес в мире: измерение и точка. */
+    public static SpellValue ofPlace(Place place) {
+        return new SpellValue(Kind.LOCATION, 0, place);
+    }
+
+    /** Место по ключу измерения и точке. */
+    public static SpellValue ofPlace(String dimension, Vec3 pos) {
+        return ofPlace(new Place(dimension, pos));
+    }
+
+    public Place asPlace() {
+        if (kind != Kind.LOCATION || !(ref instanceof Place place)) {
+            throw new SpellContext.SpellException("type.location");
+        }
+        return place;
     }
 
     public double asNumber() {
@@ -79,7 +123,21 @@ public record SpellValue(Kind kind, double number, Object ref) {
                     ? s.getHoverName()
                     : ref instanceof String s ? Component.literal(s)
                     : Component.translatable("value.spellcraft.item");
+            // место показываем вместе с измерением: без него координаты в панели
+            // выглядят как «(100, 64, 100)», и непонятно, что это за адрес
+            case LOCATION -> ref instanceof Place place
+                    ? Component.translatable("value.spellcraft.place",
+                    shortDimension(place.dimension()),
+                    Component.literal(blockish(place.pos())))
+                    : Component.translatable("value.spellcraft.location");
         };
+    }
+
+    /** Короткое имя измерения без пространства имён: Nether вместо minecraft:the_nether. */
+    private static Component shortDimension(String dimension) {
+        int colon = dimension.indexOf(':');
+        return Component.translatable("dimension.spellcraft."
+                + (colon < 0 ? dimension : dimension.substring(colon + 1)));
     }
 
     private static String trim(double d) {
@@ -127,6 +185,14 @@ public record SpellValue(Kind kind, double number, Object ref) {
                     tag.putInt("count", s.getCount());
                 }
             }
+            case LOCATION -> {
+                if (ref instanceof Place place) {
+                    tag.putString("dimension", place.dimension());
+                    tag.putDouble("x", place.pos().x);
+                    tag.putDouble("y", place.pos().y);
+                    tag.putDouble("z", place.pos().z);
+                }
+            }
             case NUMBER -> {
             }
         }
@@ -158,6 +224,16 @@ public record SpellValue(Kind kind, double number, Object ref) {
             case ITEM -> new SpellValue(kind, 0, label(tag));
             // сущность приходит подписью: искать её по uuid на клиенте смысла нет
             case ENTITY -> new SpellValue(kind, 0, label(tag));
+            case LOCATION -> {
+                // измерение обязано быть: без него адрес не значит ничего
+                String dimension = tag.getString("dimension");
+                if (dimension.isBlank()) {
+                    yield new SpellValue(Kind.NUMBER, 0, null);
+                }
+                yield new SpellValue(kind, 0, new Place(dimension,
+                        new Vec3(tag.getDouble("x"), tag.getDouble("y"),
+                                tag.getDouble("z"))));
+            }
             case NUMBER -> new SpellValue(kind, number, null);
         };
     }

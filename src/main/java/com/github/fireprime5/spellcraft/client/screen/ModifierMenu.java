@@ -20,7 +20,7 @@ import java.util.function.IntFunction;
  * <p>Галочки у модификаторов: можно включить несколько сразу, но конфликтные
  * (шёлк/удача и по области/мгновенная добыча; не ломать блоки/широкий радиус
  * и поджиг/отбрасывание) одновременно нельзя.
- * Неизвестный модификатор покупается за ману со шансом.
+ * Неизвестный модификатор покупается за энергию бездны со шансом.
  *
  * <p>Вся отрисовка на {@link GuiGraphics}: рамка, галочки, полоса прокрутки и
  * подпись под списком. Ширина подобрана так, чтобы самая длинная подпись и
@@ -78,17 +78,47 @@ public class ModifierMenu {
      */
     public static int heightFor(SpellModuleType type) {
         int rows = Math.min(type.modifiers().size(), MAX_ROWS);
-        return TITLE_H + rows * ROW_H + HINT_H + FOOTER_H;
+        // подсказка не гарантирована: без неё height() на HINT_H короче, и
+        // панель ставилась бы на 10px ниже нужного, обрезав подвал
+        boolean hinted = !hintFor(type).isEmpty();
+        return TITLE_H + rows * ROW_H + (hinted ? HINT_H : 0) + FOOTER_H;
+    }
+
+    /**
+     * Есть ли подсказка у модуля — до создания меню.
+     *
+     * <p>Нужна, чтобы {@link #heightFor(SpellModuleType)} и {@link #height()}
+     * считали одно и то же: раньше первая всегда резервировала {@code HINT_H},
+     * а вторая — только когда подсказка реально есть.
+     */
+    private static String hintFor(SpellModuleType type) {
+        String key = type.inputHint(1, java.util.Set.of());
+        if (key == null || key.isEmpty()) {
+            // без модификаторов подсказка описывает само число на необязательном
+            // входе, а не этот модуль — резервировать под неё место незачем
+            return type.modifiers().isEmpty() ? "" : key;
+        }
+        return key;
     }
 
     public int height() {
         return TITLE_H + visibleRows() * ROW_H
-                + (hint().isEmpty() ? 0 : HINT_H) + FOOTER_H;
+                + (hintCached().isEmpty() ? 0 : HINT_H) + FOOTER_H;
     }
 
     private String hint() {
         String hint = inputHint.apply(1);
         return hint == null ? "" : hint;
+    }
+
+    /** Кэш подсказки: height() зовут трижды за кадр из трёх разных мест. */
+    private String cachedHint;
+
+    private String hintCached() {
+        if (cachedHint == null) {
+            cachedHint = hint();
+        }
+        return cachedHint;
     }
 
     private int visibleRows() {
@@ -103,6 +133,11 @@ public class ModifierMenu {
     public void setKnown(Set<String> known) {
         knownModifiers.clear();
         knownModifiers.addAll(known);
+    }
+
+    /** Подсказка зависит от графа, поэтому кэш сбрасывается при его правке. */
+    public void invalidateHint() {
+        cachedHint = null;
     }
 
     public boolean inside(double mx, double my) {
@@ -124,10 +159,20 @@ public class ModifierMenu {
         if (my < listTop) {
             return true;
         }
-        int row = (int) ((my - listTop) / ROW_H) - scroll;
-        if (row < 0 || row >= modifiers.size()) {
+        // видимый индекс строки (0..visibleRows()-1): он же определяет, попал
+        // ли клик в область списка. Раньше scroll прибавляли/вычитали здесь же и
+        // получали либо отрицательный row, либо чужой модификатор при прокрутке.
+        int visible = (int) ((my - listTop) / ROW_H);
+        // граница — по ВИДИМЫМ строкам, а не по длине списка: список длиннее
+        // экрана прокручивается, и клик по подсказке или подвалу попадал в
+        // row, который проходил старую проверку, переключая скрытый модификатор
+        // (и иногда сразу запуская покупку за энергию бездны)
+        if (visible < 0 || visible >= visibleRows()) {
             return true;
         }
+        // абсолютный индекс с учётом прокрутки: строка i рисуется на
+        // listTop + (i - scroll) * ROW_H, поэтому i = visible + scroll
+        int row = visible + scroll;
         SpellModifier modifier = modifiers.get(row);
         if (enabled.contains(modifier.id())) {
             enabled.remove(modifier.id());

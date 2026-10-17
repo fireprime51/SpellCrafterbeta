@@ -23,11 +23,11 @@
     "slotBg": "#1B202A"
   },
   "category": {
-    "numbers": "#FFDC96",
-    "entities": "#FFC266",
     "actions": "#FFA352",
+    "effects": "#C77DFF",
+    "entities": "#FFC266",
     "logic": "#F8834C",
-    "network": "#E86A52"
+    "numbers": "#FFDC96"
   },
   "port": {
     "number": "#7FD4F5",
@@ -35,7 +35,8 @@
     "point": "#5FB8F0",
     "vector": "#8C9BF0",
     "item": "#A8D8E8",
-    "any": "#B4C4D4"
+    "any": "#B4C4D4",
+    "location": "#3FD6A8"
   },
   "variants": {
     "current": {
@@ -45,7 +46,7 @@
         "entities": "#FFC266",
         "actions": "#FFA352",
         "logic": "#F8834C",
-        "network": "#E86A52"
+        "effects": "#C77DFF"
       },
       "error": "#FF5C9E"
     },
@@ -56,7 +57,7 @@
         "entities": "#FF57C4",
         "actions": "#E44FE0",
         "logic": "#B44BF0",
-        "network": "#7C5BFF"
+        "effects": "#F44FFF"
       },
       "error": "#FF9A3D"
     },
@@ -67,7 +68,7 @@
         "entities": "#C9A6FF",
         "actions": "#A985FF",
         "logic": "#8A63F5",
-        "network": "#6B4BE0"
+        "effects": "#6B4BE0"
       },
       "error": "#FF4D8A"
     },
@@ -78,7 +79,7 @@
         "entities": "#59C8FF",
         "actions": "#A97CFF",
         "logic": "#D45BFF",
-        "network": "#FF4FD8"
+        "effects": "#B44BF0"
       },
       "error": "#FF2E6E"
     },
@@ -89,7 +90,7 @@
         "entities": "#FFB85C",
         "actions": "#A97CFF",
         "logic": "#D45BFF",
-        "network": "#6B4BE0"
+        "effects": "#A97CFF"
       },
       "error": "#FF3D6E"
     },
@@ -100,7 +101,7 @@
         "entities": "#A97CFF",
         "actions": "#9C6BFF",
         "logic": "#7A4FE0",
-        "network": "#5B3AC8"
+        "effects": "#7A4FE0"
       },
       "error": "#FF4D8A"
     },
@@ -111,7 +112,7 @@
         "entities": "#8FE8D8",
         "actions": "#FF8FB0",
         "logic": "#C77DFF",
-        "network": "#7A6BFF"
+        "effects": "#C77DFF"
       },
       "error": "#FFC24D"
     },
@@ -122,7 +123,7 @@
         "entities": "#35E0D0",
         "actions": "#FF4FD8",
         "logic": "#C77DFF",
-        "network": "#6B4BE0"
+        "effects": "#C77DFF"
       },
       "error": "#FF2020"
     }

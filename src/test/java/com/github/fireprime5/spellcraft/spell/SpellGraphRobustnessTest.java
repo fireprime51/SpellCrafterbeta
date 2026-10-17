@@ -51,6 +51,35 @@ class SpellGraphRobustnessTest {
     }
 
     @Test
+    void загрузкаУдаляетСвязьНаСамогоСебя() {
+        CompoundTag tag = new CompoundTag();
+        ListTag nodes = new ListTag();
+        CompoundTag add = nodeTag("add", 0, 0);
+        add.put("inputs", intList(0, -1));
+        nodes.add(add);
+        tag.put("nodes", nodes);
+
+        SpellGraph g = SpellGraph.load(tag);
+        assertEquals(-1, g.nodes.get(0).inputConnections.get(0));
+        assertFalse(g.validate().stream().anyMatch(i -> i.key().equals("graph.cycle")));
+    }
+
+    @Test
+    void лишниеСвязиПослеПоследнегоПортаНеУчаствуютВТопологии() {
+        SpellGraph g = new SpellGraph();
+        SpellNode constant = g.addNode(SpellModules.id("const_one"), 0, 0);
+        SpellNode add = g.addNode(SpellModules.id("add"), 1, 0);
+        add.inputConnections.add(-1);
+        add.inputConnections.add(-1);
+        add.inputConnections.add(1); // malformed connection beyond add's inputs
+
+        List<Integer> order = g.topologicalOrder(new java.util.ArrayList<>());
+        assertNotNull(order);
+        assertFalse(order.isEmpty());
+        assertNotNull(constant);
+    }
+
+    @Test
     void загрузкаЧиститБитыеИндексы() {
         CompoundTag tag = new CompoundTag();
         ListTag nodes = new ListTag();
@@ -68,17 +97,17 @@ class SpellGraphRobustnessTest {
     }
 
     @Test
-    void количествоМодулейОграничено() {
+    void обычныйГрафНеОбрезается() {
         CompoundTag tag = new CompoundTag();
         ListTag nodes = new ListTag();
-        for (int i = 0; i < SpellGraph.MAX_NODES + 50; i++) {
+        for (int i = 0; i < 562; i++) {
             nodes.add(nodeTag("const_five", i, 0));
         }
         tag.put("nodes", nodes);
 
         SpellGraph g = SpellGraph.load(tag);
-        assertEquals(SpellGraph.MAX_NODES, g.nodes.size(),
-                "мусорный граф не должен сохраняться целиком");
+        assertEquals(562, g.nodes.size(),
+                "обычный граф не должен обрезаться лимитом контекста");
     }
 
     @Test

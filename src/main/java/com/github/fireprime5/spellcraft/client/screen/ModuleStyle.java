@@ -30,7 +30,7 @@ public final class ModuleStyle {
         GLYPHS.put(SpellModuleType.Category.ENTITIES, "@");
         GLYPHS.put(SpellModuleType.Category.ACTIONS, "!");
         GLYPHS.put(SpellModuleType.Category.LOGIC, "?");
-        GLYPHS.put(SpellModuleType.Category.NETWORK, "⇄");
+        GLYPHS.put(SpellModuleType.Category.EFFECTS, "\u2726");
     }
 
     private ModuleStyle() {

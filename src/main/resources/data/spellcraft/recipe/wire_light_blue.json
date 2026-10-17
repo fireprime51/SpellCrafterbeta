@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " W ",
+    "WDW",
+    " W "
+  ],
+  "key": {
+    "W": {
+      "item": "spellcraft:wire"
+    },
+    "D": {
+      "item": "minecraft:light_blue_dye"
+    }
+  },
+  "result": {
+    "id": "spellcraft:wire_light_blue",
+    "count": 4
+  }
+}

@@ -3,14 +3,10 @@ package com.github.fireprime5.spellcraft.network;
 import com.github.fireprime5.spellcraft.data.SpellLibrary;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Клиент -> Сервер: сохранить заклинание в библиотеку под именем.

@@ -1,6 +1,5 @@
 package com.github.fireprime5.spellcraft.spell;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -60,6 +59,9 @@ public final class BuiltinModules {
     /** Дальность лучей (поиск сущности и блока по взгляду). */
     private static final double RAYCAST_RANGE = 28;
 
+    /** Потолок урона от одного каста заклинания. */
+    public static final double MAX_SPELL_DAMAGE = 1000;
+
     public static void registerAll() {
         // --- Числа ---
         constant("const_zero", 0);
@@ -67,6 +69,8 @@ public final class BuiltinModules {
         constant("const_five", 5);
         constant("const_ten", 10);
         constant("const_neg_one", -1);
+
+        comparisons();
 
         math("add", 2, (a, b) -> a + b);
         math("subtract", 2, (a, b) -> a - b);
@@ -84,7 +88,7 @@ public final class BuiltinModules {
         register(new SpellModuleType(SpellModules.id("caster_entity"), ENT, C_ENTITY) {
             @Override public int outputs() { return 1; }
             @Override public PortType[] outputPorts() { return new PortType[]{ENTITY}; }
-            // стартовая цепочка бесплатна: без неё нельзя добыть первую ману
+            // стартовая цепочка бесплатна: без неё нельзя добыть первую энергию бездны
             @Override public int manaCost() { return 0; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
                 out.add(SpellValue.of(ctx.caster()));
@@ -120,7 +124,7 @@ public final class BuiltinModules {
             @Override public PortType[] inputPorts() { return new PortType[]{VECTOR}; }
             @Override public PortType[] outputPorts() { return new PortType[]{ENTITY}; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
-                Vec3 dir = in.get(0).asVec().normalize();
+                Vec3 dir = unit(in.get(0));
                 Vec3 from = ctx.caster().getEyePosition();
                 Vec3 to = from.add(dir.scale(RAYCAST_RANGE));
                 // область поиска строим от глаза, а не от хитбокса ног:
@@ -149,10 +153,7 @@ public final class BuiltinModules {
             @Override public PortType[] outputPorts() { return new PortType[]{POINT}; }
             @Override public int manaCost() { return 0; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
-                Vec3 dir = in.get(0).asVec().normalize();
-                if (dir.x == 0 && dir.y == 0 && dir.z == 0) {
-                    throw new SpellContext.SpellException("cast.zero_direction");
-                }
+                Vec3 dir = unit(in.get(0));
                 var hit = ctx.level().clip(new ClipContext(
                         ctx.caster().getEyePosition(),
                         ctx.caster().getEyePosition().add(dir.scale(RAYCAST_RANGE)),
@@ -215,10 +216,13 @@ public final class BuiltinModules {
                 if (!(target instanceof LivingEntity living)) {
                     throw new SpellContext.SpellException("cast.not_living");
                 }
+                // living.hurt() идёт мимо Player.attack(), а значит мимо
+                // правил сложности, команд и гейм-правила PvP
+                ctx.requireCanHarm(target);
                 var source = ctx.caster() instanceof Player p
                         ? ctx.level().damageSources().playerAttack(p)
                         : ctx.level().damageSources().mobAttack((LivingEntity) ctx.caster());
-                living.hurt(source, (float) Math.min(amount, 1000));
+                living.hurt(source, (float) Math.clamp(amount, 0, MAX_SPELL_DAMAGE));
                 out.add(in.get(0));
             }
         });
@@ -235,6 +239,7 @@ public final class BuiltinModules {
                 if (!(target instanceof LivingEntity living)) {
                     throw new SpellContext.SpellException("cast.not_living");
                 }
+                ctx.requireCanHarm(target);
                 living.heal((float) amount);
                 out.add(in.get(0));
             }
@@ -260,6 +265,7 @@ public final class BuiltinModules {
             }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
                 Vec3 pos = in.get(0).asVec();
+                ctx.requireInRange(pos);
                 double power = Math.clamp(in.get(1).asNumber(), 0, 8);
 
                 boolean noBlocks = ctx.hasModifier(SpellModifiers.NO_BLOCKS);
@@ -268,13 +274,12 @@ public final class BuiltinModules {
                 boolean shove = ctx.hasModifier(SpellModifiers.SHOVE);
                 boolean powerful = ctx.hasModifier(SpellModifiers.POWERFUL);
 
-                float radius = (float) power;
-                if (wide) {
-                    radius *= 1.5f;
-                }
+                // «Усиленный» множил и power, и радиус, но в трассу уходил
+                // только power — лог врал, а взрыв брал исходный радиус
+                float radius = (float) (wide ? power * 1.5 : power);
                 if (powerful) {
-                    radius *= 1.25f;
-                    power = Math.min(20, power * 1.5);
+                    radius *= 1.5f;
+                    power = radius;
                 }
 
                 var interaction = noBlocks
@@ -308,7 +313,7 @@ public final class BuiltinModules {
             @Override public int manaCost() { return 25; }
             @Override public int maxInstances() { return 1; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
-                Vec3 dir = in.get(0).asVec().normalize();
+                Vec3 dir = unit(in.get(0));
                 if (ctx.level() instanceof ServerLevel server) {
                     LargeFireball ball = new LargeFireball(server, ctx.caster(), dir.scale(1.5), 2);
                     ball.setPos(ctx.caster().getEyePosition());
@@ -326,7 +331,8 @@ public final class BuiltinModules {
             @Override public int manaCost() { return 8; }
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
                 Entity target = in.get(0).asEntity();
-                Vec3 dir = in.get(1).asVec().normalize();
+                Vec3 dir = unit(in.get(1));
+                ctx.requireCanHarm(target);
                 target.push(dir.x, dir.y, dir.z);
                 target.hurtMarked = true;
                 out.add(in.get(0));
@@ -341,6 +347,7 @@ public final class BuiltinModules {
             @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
                 Vec3 pos = in.get(0).asVec();
                 if (ctx.level() instanceof ServerLevel server) {
+                    ctx.requireInRange(pos);
                     server.sendParticles(ParticleTypes.END_ROD, pos.x, pos.y, pos.z,
                             24, 0.3, 0.3, 0.3, 0.05);
                     server.playSound(null, ctx.caster().getX(), ctx.caster().getY(),
@@ -367,6 +374,21 @@ public final class BuiltinModules {
 
     private static boolean living(Entity e) {
         return e instanceof LivingEntity;
+    }
+
+    /**
+     * Единичный вектор направления; нулевой — ошибка заклинания.
+     *
+     * <p>{@code Vec3.normalize()} для нулевого вектора возвращает
+     * {@code Vec3.ZERO}, и «Огненный шар» по вектору нулей выпускал снаряд,
+     * который сразу же падал. Тихая поломка хуже явной ошибки.
+     */
+    private static Vec3 unit(SpellValue value) {
+        Vec3 dir = value.asVec().normalize();
+        if (dir.lengthSqr() < 1e-9) {
+            throw new SpellContext.SpellException("cast.zero_direction");
+        }
+        return dir;
     }
 
     private static void register(SpellModuleType type) {
@@ -402,6 +424,45 @@ public final class BuiltinModules {
                 double a = in.get(0).asNumber();
                 double b = in.size() > 1 ? in.get(1).asNumber() : 0;
                 out.add(SpellValue.of(op.apply(a, b)));
+            }
+        });
+    }
+
+    /**
+     * Сравнения отдельными узлами.
+     *
+     * <p>Раньше был только {@code compare}, и любое неравенство в схеме
+     * собиралось из четырёх узлов: «вычесть», «знак», «модуль», «сравнить». Это
+     * не изящество, а мусор в графе — на каждое условие уходило четыре блока, и
+     * в схеме среднего заклинания их становилось видно глазом.
+     *
+     * <p>Порядок аргументов такой же, как у «сравнить»: слева то, что проверяем.
+     * На выходе 1 или 0, а не «истина» и «ложь»: значение идёт в «если», где
+     * ноль и неноль уже есть готовым условием.
+     */
+    private static void comparisons() {
+        comparison("equals", 2, Comparisons.EQUALS);
+        comparison("not_equals", 2, Comparisons.NOT_EQUALS);
+        comparison("greater", 2, Comparisons.GREATER);
+        comparison("less", 2, Comparisons.LESS);
+        comparison("greater_or_equal", 2, Comparisons.GREATER_OR_EQUAL);
+        comparison("less_or_equal", 2, Comparisons.LESS_OR_EQUAL);
+    }
+
+    private static void comparison(String path, int стоимость,
+                                   Comparisons.Cmp условие) {
+        register(new SpellModuleType(SpellModules.id(path), LOG, C_LOGIC) {
+            @Override public int inputs() { return 2; }
+            @Override public int outputs() { return 1; }
+            @Override public int manaCost() { return стоимость; }
+            @Override public PortType[] inputPorts() {
+                return new PortType[]{NUMBER, NUMBER};
+            }
+            @Override public PortType[] outputPorts() { return new PortType[]{NUMBER}; }
+            @Override public void execute(SpellContext ctx, List<SpellValue> in,
+                                          List<SpellValue> out) {
+                out.add(SpellValue.of(условие.test(in.get(0).asNumber(),
+                        in.get(1).asNumber()) ? 1 : 0));
             }
         });
     }

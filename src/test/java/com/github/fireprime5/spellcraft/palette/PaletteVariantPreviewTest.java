@@ -59,7 +59,7 @@ class PaletteVariantPreviewTest {
                         java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
         com.google.gson.JsonObject section = root.getAsJsonObject("variants");
         List<Variant> out = new java.util.ArrayList<>();
-        String[] order = {"numbers", "entities", "actions", "logic", "network"};
+        String[] order = {"numbers", "entities", "actions", "logic", "effects"};
         for (String id : section.keySet()) {
             com.google.gson.JsonObject entry = section.getAsJsonObject(id);
             com.google.gson.JsonObject categories = entry.getAsJsonObject("categories");

@@ -6,12 +6,18 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Таблица наград за сканирование: что за объект → какой модуль открывается.
  *
- * Сканирование блока: id из реестра блоков (например "minecraft:obsidian").
+ * <p>Сканирование блока: id из реестра блоков (например "minecraft:obsidian").
  * Сканирование существа: id из реестра мобов (например "minecraft:creeper").
+ *
+ * <p>Каждая награда должна быть ЗАРЕГИСТРИРОВАННЫМ модулем, иначе сканирование
+ * молча ничего не откроет: {@code KnowledgeHooks.scan} находит тип, а он null,
+ * и игрок уходит с «пустой» целью. Проверку этой согласованности держит
+ * {@code ScanRewardsTest}, а при удалении модуля таблицу нужно править здесь.
  */
 public final class ScanRewards {
 
@@ -23,6 +29,14 @@ public final class ScanRewards {
 
     private static final Map<String, String> BLOCKS = new HashMap<>();
     private static final Map<String, String> MOBS = new HashMap<>();
+
+    /**
+     * id всех выдаваемых модулей, для быстрой проверки «это вообще награда?».
+     *
+     * <p>Заполняется в самом конце инициализации, после всех вызовов
+     * {@link #block} и {@link #mob}, иначе был бы пустым.
+     */
+    private static final Set<String> REWARD_IDS = new java.util.LinkedHashSet<>();
 
     private static void block(String id, String module) {
         BLOCKS.put("minecraft:" + id, module);
@@ -97,7 +111,7 @@ public final class ScanRewards {
         block("beacon", "effect_regeneration");
         block("conduit", "effect_water_breathing");
         block("enchanting_table", "duplicate");
-        block("anvil", "set_health");
+        block("anvil", "effect_resistance");
         block("bell", "sound_at");
         block("spawner", "lightning");
         block("end_portal_frame", "world_spawn");
@@ -116,7 +130,7 @@ public final class ScanRewards {
         block("trial_spawner", "effect_trial_omen");
         block("vault", "stack_size");
         block("chest", "item_count");
-        block("barrel", "item_count");
+        block("barrel", "fill_region");
         block("crafting_table", "place_held_block");
         block("furnace", "sparkle");
         block("smoker", "sparkle");
@@ -164,17 +178,65 @@ public final class ScanRewards {
         block("decorated_pot", "stack_clear_slots");
 
         // --- предметы и блоки ---
-        block("iron_block", "block_at");
-        block("cauldron", "fluid_at");
+        block("iron_block", "fill_region");
+        block("cauldron", "effect_water_breathing");
         block("cartography_table", "held_slot");
-        block("grindstone", "empty_hand");
-        block("smithing_table", "offhand_item");
-        block("bricks", "swap_blocks");
+        block("grindstone", "held_item");
+        block("smithing_table", "item_count");
+        block("bricks", "effect_strength");
         block("quartz_block", "fill_region");
-        block("sponge", "clear_block");
-        block("chiseled_bookshelf", "give_item");
-        block("beehive", "drop_item");
-        block("composter", "consume_item");
+        block("sponge", "effect_water_breathing");
+        block("chiseled_bookshelf", "effect_absorption");
+        block("beehive", "effect_regeneration");
+        block("composter", "effect_night_vision");
+
+        // --- добавленные вместе с ограничениями дальности ---
+        // --- порталы ---
+        //
+        // Открываются сканированием ВАНИЛЬНЫХ порталов, а не наших: модуль
+        // портала нужен, чтобы поставить портал, поэтому «просканируй свой
+        // портал» было бы замкнутым кругом. Путь обычный: доломать обсидиан,
+        // построить портал в Незер, просканировать — открылся «Проход».
+        // Врата (двусторонний) — из Энда: до него и добраться труднее.
+        block("nether_portal", "portal_passage");
+        block("end_portal", "portal_gate");
+
+        // --- корни цепочек ---
+        //
+        // Дальше модули открываются сами по предпосылкам (SpellPrerequisites),
+        // поэтому сканированием нужно выдать только начало каждой ветки.
+        // Раньше эти 16 модулей не имели награды вообще, и вместе с цепочками
+        // это делало 51 модуль недостижимым — включая сложение с умножением.
+        block("oak_slab", "add");
+        block("stone_slab", "subtract");
+        block("prismarine", "multiply");
+        block("coarse_dirt", "divide");
+        block("gold_block", "compare");
+        block("fletching_table", "random");
+        block("armor_stand", "entity_position");
+        block("ender_chest", "entity_distance");
+        block("respawn_anchor", "point_from_coords");
+        block("glass", "block_under_crosshair");
+        block("redstone_lamp", "time_of_day");
+        block("bee_nest", "heal");
+        block("scaffolding", "arrow");
+        block("blue_ice", "create_water");
+        block("shroomlight", "create_lava");
+        block("polished_blackstone", "create_fire");
+
+        // измерения: аксиома без награды означала бы, что портал в Незер
+        // бессмыслен — координаты есть, а куда идти, непонятно
+        block("crimson_nylium", "location_nether");
+        block("end_stone", "location_end");
+
+        block("iron_bars", "line_blocks");
+        block("chain", "point_distance");
+        block("lever", "raycast_block");
+        block("tripwire", "raycast_entity");
+
+        // «Расщепление» здесь НЕТ намеренно: способ добычи ещё не придуман,
+        // и пока он не задан, модуль просто недостижим в игре — ни через
+        // сканирование, ни через команду.
     }
 
     static {
@@ -231,6 +293,9 @@ public final class ScanRewards {
         mob("piglin", "damage");
         mob("piglin_brute", "damage");
         mob("strider", "stack_push");
+
+        REWARD_IDS.addAll(BLOCKS.values());
+        REWARD_IDS.addAll(MOBS.values());
     }
 
     /** Модификатор, который даёт сканирование цели, либо null. */
@@ -251,6 +316,16 @@ public final class ScanRewards {
     public static ResourceLocation rewardId(String targetId) {
         String reward = rewardFor(targetId);
         return reward == null ? null : Spellcraft.id(reward);
+    }
+
+    /** Выдаётся ли этот модуль за сканирование хоть чего-нибудь. */
+    public static boolean isReward(String modulePath) {
+        return REWARD_IDS.contains(modulePath);
+    }
+
+    /** id всех модулей, выдаваемых сканированием. */
+    public static Set<String> rewardIds() {
+        return REWARD_IDS;
     }
 
     public static Map<String, String> blocks() {

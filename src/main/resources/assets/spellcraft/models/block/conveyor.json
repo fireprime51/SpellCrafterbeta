@@ -1,0 +1,41 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "spellcraft:block/conveyor",
+    "conveyor": "spellcraft:block/conveyor"
+  },
+  "elements": [
+    {
+      "from": [
+        0,
+        4,
+        0
+      ],
+      "to": [
+        16,
+        12,
+        16
+      ],
+      "faces": {
+        "north": {
+          "texture": "#conveyor"
+        },
+        "south": {
+          "texture": "#conveyor"
+        },
+        "east": {
+          "texture": "#conveyor"
+        },
+        "west": {
+          "texture": "#conveyor"
+        },
+        "up": {
+          "texture": "#conveyor"
+        },
+        "down": {
+          "texture": "#conveyor"
+        }
+      }
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import java.util.List;
  * край и становилось непонятно, к какой секции относится строка.
  *
  * <p>Подвал (энергия и подсказка) не прокручивается: он всегда на виду, чтобы
- * не искать ману и горячую клавишу справки по всему экрану.
+ * не искать энергию бездны и горячую клавишу справки по всему экрану.
  */
 public class SidePanelWidget {
 
@@ -45,10 +45,10 @@ public class SidePanelWidget {
 
     private List<SpellIssue> issues = List.of();
 
-    /** Мана и цена каста — рисуются в подвале. */
-    private int mana;
+    /** Энергия бездны и цена каста — рисуются в подвале. */
+    private int abyss;
     private int cost;
-    /** Бесконечная мана: подвал показывает «∞», а не число. */
+    /** Бесконечная энергия бездны: подвал показывает «∞», а не число. */
     private boolean infinite;
 
     public SidePanelWidget(int x, int y, int w, int h) {
@@ -64,9 +64,7 @@ public class SidePanelWidget {
      */
     public void update(SpellModuleType module, SpellResultPayload result,
                        List<SpellIssue> graphIssues,
-                       List<StackPreview.Entry> previewEntries,
-                       java.util.Set<net.minecraft.resources.ResourceLocation> known,
-                       int learned, int total) {
+                       List<StackPreview.Entry> previewEntries) {
         this.module = module;
         this.preview = previewEntries == null ? List.of() : previewEntries;
         if (result != null) {
@@ -86,9 +84,9 @@ public class SidePanelWidget {
         }
     }
 
-    /** Мана и стоимость каста для подвала. */
-    public void setEnergy(int mana, int cost, boolean infinite) {
-        this.mana = mana;
+    /** Энергия бездны и стоимость каста для подвала. */
+    public void setEnergy(int abyss, int cost, boolean infinite) {
+        this.abyss = abyss;
         this.cost = cost;
         this.infinite = infinite;
     }
@@ -111,6 +109,11 @@ public class SidePanelWidget {
     }
 
     public void render(GuiGraphics gfx) {
+        // скролл зажимается по contentHeight предыдущего кадра: удаление
+        // последнего модуля или выбор другого сокращали содержимое, а
+        // прокрутка оставалась за концом и прятала верх списка до прокрутки
+        // обратно. Считаем актуальную высоту заранее.
+        scroll = Math.clamp(scroll, 0, maxScroll());
         Font font = UiKit.font();
         UiKit.panel(gfx, x, y, w, h, UiKit.PANEL, UiKit.BORDER);
 
@@ -128,6 +131,7 @@ public class SidePanelWidget {
 
         gfx.disableScissor();
         contentHeight = (cy + scroll) - y + PAD;
+        scroll = Math.clamp(scroll, 0, maxScroll());
 
         if (maxScroll() > 0) {
             UiKit.scrollBar(gfx, x + w - 3, y + 2, viewH - 4,
@@ -169,7 +173,7 @@ public class SidePanelWidget {
                 cx, cy, UiKit.BORDER_LIGHT, false);
         cy += font.lineHeight + 1;
         for (String line : UiKit.wrap(font,
-                Component.translatable(module.descriptionKey()).getString(), right)) {
+                module.description().getString(), right)) {
             gfx.drawString(font, line, cx, cy, UiKit.TEXT_DIM, false);
             cy += font.lineHeight;
         }
@@ -262,20 +266,20 @@ public class SidePanelWidget {
     /**
      * Подвал колонки: энергия и подсказка.
      *
-     * <p>Энергия красная, когда маны не хватает на каст: это то же
+     * <p>Энергия красная, когда энергии бездны не хватает на каст: это то же
      * состояние, что раньше показывала плашка над холстом.
      */
     private void footer(GuiGraphics gfx, Font font, int cx, int fy, int right) {
         gfx.fill(x + 1, fy, x + w - 1, y + h - 1, UiKit.PANEL_LIGHT);
         gfx.fill(x + 1, fy, x + w - 1, fy + 1, UiKit.BORDER);
 
-        // при бесконечной мане показывается «∞»: иначе панель светилась бы красным
-        // «не хватает маны», хотя каст как раз бесплатный
+        // при бесконечной энергии бездны показывается «∞»: иначе панель светилась бы красным
+        // «не хватает энергии бездны», хотя каст как раз бесплатный
         String energy = infinite
                 ? Component.translatable("gui.spellcraft.infinite", cost).getString()
-                : Component.translatable("gui.spellcraft.energy", mana, cost).getString();
+                : Component.translatable("gui.spellcraft.energy", abyss, cost).getString();
         gfx.drawString(font, UiKit.fit(font, energy, right), cx, fy + 3,
-                infinite || cost <= mana ? UiKit.OK : UiKit.error(), false);
+                infinite || cost <= abyss ? UiKit.OK : UiKit.error(), false);
 
         // «H — справка» вместо зума в процентах: цифры зума только мешали
         String help = Component.translatable("gui.spellcraft.help_hint").getString();
@@ -295,6 +299,7 @@ public class SidePanelWidget {
             case POSITION -> PortType.POINT;
             case VECTOR -> PortType.VECTOR;
             case ITEM -> PortType.ITEM;
+            case LOCATION -> PortType.LOCATION;
         };
     }
 }

@@ -36,15 +36,17 @@ public final class SpellExecutor {
 
         SpellContext ctx = new SpellContext(level, caster, origin);
 
-        int cost = graph.totalManaCost();
+        // потолок энергии бездны нужен модулям с плавающей ценой (например «Расщепление»
+        // стоит ровно весь кошелёк)
+        int cost = graph.totalAbyssCost(
+                player == null ? 0
+                        : com.github.fireprime5.spellcraft.energy.AbyssEnergy.capacity());
         if (!ctx.hasMana(cost)) {
             Result result = new Result(List.of(), List.of(),
-                    List.of(SpellIssue.of("mana.insufficient", cost)), false, 0, List.of());
+                    List.of(SpellIssue.of("abyss.insufficient", cost)), false, 0, List.of());
             report(player, result, "message.spellcraft.cast.no_mana");
             return result;
         }
-        ctx.consumeMana(cost);
-        ctx.spendMana(cost);
 
         List<Integer> order = graph.topologicalOrder(ctx.errors());
         if (order == null) {
@@ -54,91 +56,29 @@ public final class SpellExecutor {
             return result;
         }
 
-        Map<Integer, List<SpellValue>> results = new HashMap<>();
-        List<Integer> errorNodes = new ArrayList<>();
+        ctx.spend(cost);
+        ctx.spendMana(cost);
+        ctx.markPrepaid(cost);
 
-        for (int idx : order) {
-            if (ctx.failed()) {
-                break;
-            }
-            // модуль вроде «Выход» попросил прекратить каст: это не ошибка,
-            // поэтому успех ниже считается по errors, а не по этому флагу
-            if (ctx.halted()) {
-                break;
-            }
-            SpellNode node = graph.nodes.get(idx);
-            SpellModuleType type = SpellModules.get(node.moduleId);
-            if (type == null) {
-                ctx.error(SpellIssue.of("module.unknown", node.moduleId.toString()));
-                continue;
-            }
-            try {
-                List<SpellValue> inputs = new ArrayList<>();
-                StringBuilder desc = new StringBuilder();
-                for (int port = 0; port < type.inputs(); port++) {
-                    int conn = port < node.inputConnections.size()
-                            ? node.inputConnections.get(port) : -1;
-                    List<SpellValue> srcOutputs = conn >= 0 ? results.get(conn) : null;
-                    SpellValue value = null;
-                    if (srcOutputs != null && !srcOutputs.isEmpty()) {
-                        value = srcOutputs.get(Math.min(port, srcOutputs.size() - 1));
-                    } else if (!type.isOptional(port)) {
-                        throw new SpellContext.SpellException("graph.missing_input",
-                                SpellModules.shortName(type) + " вход " + (port + 1));
-                    }
-                    // необязательный вход без связи = null, модуль сам решает
-                    inputs.add(value);
-                    if (value != null) {
-                        if (desc.length() > 0) {
-                            desc.append(" + ");
-                        }
-                        desc.append(value.describe().getString());
-                    }
-                }
-
-                // значения, которые модуль берёт из входов, потребляются из стека:
-                // в стеке остаётся только то, что никто не использовал
-                for (SpellValue value : inputs) {
-                    if (value != null && !ctx.stackIsEmpty()) {
-                        ctx.pop();
-                    }
-                }
-
-                ctx.setModifiers(node.modifiers);
-                ctx.setCurrentNode(node);
-                List<SpellValue> outputs = new ArrayList<>();
-                type.execute(ctx, inputs, outputs);
-                results.put(idx, outputs);
-
-                ctx.trace(SpellModules.shortName(type)
-                        + (desc.length() > 0 ? "(" + desc + ")" : "()")
-                        + " = " + formatOutputs(outputs));
-
-                // значения идут дальше по соединениям; в стек попадают только
-                // явно через модули stack_*
-                for (SpellValue v : outputs) {
-                    ctx.push(v);
-                }
-            } catch (SpellContext.SpellException e) {
-                ctx.trace(SpellModules.shortName(type) + " ошибка: " + e.getKey());
-                ctx.error(e.toIssue());
-                errorNodes.add(idx);
-            } catch (RuntimeException e) {
-                ctx.trace(SpellModules.shortName(type) + " краш: " + e);
-                ctx.error(SpellIssue.of("cast.internal_error", e.getClass().getSimpleName()));
-                errorNodes.add(idx);
-            }
-        }
+        List<Integer> errorNodes = interpret(graph, ctx, order, Mode.CAST);
 
         boolean success = !ctx.failed();
         if (ctx.halted()) {
             ctx.trace("cast stopped by exit");
         }
-        // модули могут добирать ману прямо во время каста (например, мгновенная
+        // модули могут добирать энергию бездны прямо во время каста (например, мгновенная
         // добыча по блокам) — эти траты тоже нужно списать с игрока
         int extra = ctx.manaSpent() - cost;
         if (extra > 0) {
-            ctx.consumeMana(extra);
+            ctx.spend(extra);
+        }
+        // личный модуль «Счёт» читает, сколько бездны игрок потратил за жизнь.
+        // Считаем здесь, а не в энергосистеме: тот же кошелёк тратят ещё и
+        // броня, и покупка модификатора, а «потрачено за каст» — единственное
+        // число, которое честно совпадает с тем, что показано в панели каста
+        if (player != null && success && ctx.manaSpent() > 0) {
+            com.github.fireprime5.spellcraft.data.PlayerKnowledge
+                    .addAbyssSpent(player, ctx.manaSpent());
         }
         // в панели показываем то, что реально осталось в стеке
         List<SpellValue> leftOnStack = ctx.stackSnapshot();
@@ -167,6 +107,131 @@ public final class SpellExecutor {
                 net.minecraft.sounds.SoundSource.PLAYERS, 0.6f, 1.4f);
     }
 
+    /**
+     * Прогон графа без списания, отчёта и эффектов каста — для брони.
+     *
+     * <p>Броня не «кастуется»: её схему читают каждый тик, и модули-модификаторы
+     * через {@link SpellContext#putArmorModifier} кладут свои множители в контекст,
+     * откуда их потом забирает {@code ArmorEvents}. Отдельный метод, а не
+     * {@link #execute}: тот списывает бездну, шлёт игроку пакет результата и
+     * играет эффекты — для постоянного тика брони всё это лишнее и вредно.
+     *
+     * <p>Битый узел не роняет сервер: он просто пропускается, ведь этот прогон
+     * идёт каждый тик и не должен прерываться из-за одной ошибки в схеме.
+     */
+    public static void runInto(SpellGraph graph, SpellContext ctx) {
+        List<Integer> order = graph.topologicalOrder(ctx.errors());
+        if (order == null) {
+            return;
+        }
+        interpret(graph, ctx, order, Mode.PER_TICK);
+    }
+
+    /**
+     * Как строго исполнять граф.
+     *
+     * <p>Разница между кастом и тиком брони только в диагностике: каст пишет
+     * трассу, собирает ошибки и останавливается, как только контекст провалился;
+     * тик брони молча пропускает битые узлы и всегда доходит до конца.
+     */
+    private enum Mode {
+        /** Каст игрока: трасса, отчёт об ошибках, остановка на провале. */
+        CAST,
+        /** Тик модульной брони: без трассы, ошибки узлов молча игнорируются. */
+        PER_TICK
+    }
+
+    /**
+     * Общий цикл исполнения: идёт по {@code order} и для каждого узла
+     * собирает входы из результатов уже исполненных узлов.
+     *
+     * <p>Входы приходят по соединениям из {@code results}, а не из стека:
+     * стек трогают только модули {@code stack_*}. Поэтому исполнитель
+     * ничего не кладёт и не снимает — значение само уходит дальше по графу
+     * через {@code results.put(idx, outputs)}, а «Кладёт» и «Взять» делают
+     * ровно то, что написано в их описании.
+     *
+     * @return индексы узлов, которые упали (в {@link Mode#PER_TICK} всегда пусто)
+     */
+    private static List<Integer> interpret(SpellGraph graph, SpellContext ctx, List<Integer> order,
+                                           Mode mode) {
+        Map<Integer, List<SpellValue>> results = new HashMap<>();
+        List<Integer> errorNodes = new ArrayList<>();
+
+        for (int idx : order) {
+            // В режиме брони цикл не прерывается: он идёт каждый тик и должен
+            // дочитать схему до конца, даже если часть узлов уже отвалилась.
+            if (mode == Mode.CAST && (ctx.failed() || ctx.halted())) {
+                break;
+            }
+            SpellNode node = graph.nodes.get(idx);
+            SpellModuleType type = SpellModules.get(node.moduleId);
+            if (type == null) {
+                if (mode == Mode.CAST) {
+                    ctx.error(SpellIssue.of("module.unknown", node.moduleId.toString()));
+                }
+                continue;
+            }
+            boolean traced = mode == Mode.CAST;
+            try {
+                List<SpellValue> inputs = new ArrayList<>();
+                StringBuilder desc = traced ? new StringBuilder() : null;
+                for (int port = 0; port < type.inputs(); port++) {
+                    int conn = port < node.inputConnections.size()
+                            ? node.inputConnections.get(port) : -1;
+                    List<SpellValue> srcOutputs = conn >= 0 ? results.get(conn) : null;
+                    SpellValue value = null;
+                    if (srcOutputs != null && !srcOutputs.isEmpty()) {
+                        // Порт приёмника выбирает выход источника: у модуля с
+                        // одним выходом (а таких большинство) он читается в
+                        // любой подключённый вход. Схема хранит только индекс
+                        // узла-источника, а пару (узел, порт) формат сохранения
+                        // не предусматривает — см. заметку в SpellGraph.validate.
+                        value = srcOutputs.get(Math.min(port, srcOutputs.size() - 1));
+                    } else if (!type.isOptional(port)) {
+                        throw new SpellContext.SpellException("graph.missing_input",
+                                SpellModules.shortName(type) + " вход " + (port + 1));
+                    }
+                    // необязательный вход без связи = null, модуль сам решает
+                    inputs.add(value);
+                    if (traced && value != null) {
+                        if (desc.length() > 0) {
+                            desc.append(" + ");
+                        }
+                        desc.append(value.describe().getString());
+                    }
+                }
+
+                ctx.setModifiers(node.modifiers);
+                ctx.setCurrentNode(node);
+                List<SpellValue> outputs = new ArrayList<>();
+                type.execute(ctx, inputs, outputs);
+                results.put(idx, outputs);
+
+                if (traced) {
+                    ctx.trace(SpellModules.shortName(type)
+                            + (desc.length() > 0 ? "(" + desc + ")" : "()")
+                            + " = " + formatOutputs(outputs));
+                }
+            } catch (SpellContext.SpellException e) {
+                // В тике брони битый узел просто пропускается: ошибки не
+                // собираются, трасса не пишется, каст прерван не будет.
+                if (traced) {
+                    ctx.trace(SpellModules.shortName(type) + " ошибка: " + e.getKey());
+                    ctx.error(e.toIssue());
+                    errorNodes.add(idx);
+                }
+            } catch (RuntimeException e) {
+                if (traced) {
+                    ctx.trace(SpellModules.shortName(type) + " краш: " + e);
+                    ctx.error(SpellIssue.of("cast.internal_error", e.getClass().getSimpleName()));
+                    errorNodes.add(idx);
+                }
+            }
+        }
+        return errorNodes;
+    }
+
     private static String formatOutputs(List<SpellValue> outputs) {
         if (outputs.isEmpty()) {
             return "∅";
@@ -190,12 +255,12 @@ public final class SpellExecutor {
         // Успешные касты пишем в debug, иначе INFO засоряется каждый клик
         if (result.success()) {
             com.github.fireprime5.spellcraft.Spellcraft.LOGGER.debug(
-                    "Cast by {}: success, mana={}, nodes={}, trace={}",
+                    "Cast by {}: success, abyss={}, nodes={}, trace={}",
                     player.getName().getString(), result.manaSpent(),
                     result.trace().size(), result.trace());
         } else {
             com.github.fireprime5.spellcraft.Spellcraft.LOGGER.info(
-                    "Cast by {}: success={}, mana={}, nodes={}, trace={}, issues={}",
+                    "Cast by {}: success={}, abyss={}, nodes={}, trace={}, issues={}",
                     player.getName().getString(), result.success(), result.manaSpent(),
                     result.trace().size(), result.trace(), result.issues());
         }
@@ -204,9 +269,9 @@ public final class SpellExecutor {
                         result.trace(), result.stack(), result.issues(), result.success(),
                         result.manaSpent(), result.errorNodes()));
 
-        com.github.fireprime5.spellcraft.network.ManaSyncPayload.sendTo(player);
+        com.github.fireprime5.spellcraft.network.AbyssEnergySyncPayload.sendTo(player);
 
-        // в чат пишем только об ошибках и нехватке маны — успех ничем не шумит
+        // в чат пишем только об ошибках и нехватке энергии бездны — успех ничем не шумит
         if (!result.success()) {
             var msg = net.minecraft.network.chat.Component.translatable(messageKey);
             player.sendSystemMessage(msg);

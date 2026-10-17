@@ -1,0 +1,21 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "spellcraft:block/portal",
+    "portal": "spellcraft:block/portal"
+  },
+  "elements": [
+    {
+      "from": [1, 0, 1],
+      "to": [15, 14, 15],
+      "faces": {
+        "north":  { "texture": "#portal", "cullface": "north" },
+        "south":  { "texture": "#portal", "cullface": "south" },
+        "east":   { "texture": "#portal", "cullface": "east" },
+        "west":   { "texture": "#portal", "cullface": "west" },
+        "up":     { "texture": "#portal", "cullface": "up" },
+        "down":   { "texture": "#portal", "cullface": "down" }
+      }
+    }
+  ]
+}

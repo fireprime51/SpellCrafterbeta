@@ -179,11 +179,24 @@ class SpellGraphTest {
         assertTrue(g.validate().isEmpty(), "ошибок нет: " + g.validate());
     }
 
+    /**
+     * Модули эффектов вернулись, но в отдельном разделе и с ограничениями.
+     *
+     * <p>Их было 36 штук, и каждый давал доступ к любому эффекту Minecraft на
+     * любую сущность, включая игроков: «И мгновенный урон» и «Иссушение» на
+     * час с усилителем 255 обходили и PvP, и плагины защиты.
+     */
     @Test
-    void модулиЭффектовЗарегистрированы() {
+    void модулиЭффектовВОтдельномРазделе() {
         long effects = SpellModules.all().stream()
                 .filter(t -> t.id().getPath().startsWith("effect_")).count();
-        assertTrue(effects >= 30, "эффектов должно быть много, а не " + effects);
+        assertTrue(effects >= 30, "набор эффектов должен вернуться, а не " + effects);
+        for (SpellModuleType type : SpellModules.all()) {
+            if (type.id().getPath().startsWith("effect_")) {
+                assertEquals(SpellModuleType.Category.EFFECTS, type.category(),
+                        type.id().getPath() + " должен быть в разделе эффектов");
+            }
+        }
         SpellModuleType speed = SpellModules.get(SpellModules.id("effect_speed"));
         assertNotNull(speed, "модуль эффекта скорости");
         assertEquals(3, speed.inputs());
@@ -192,7 +205,7 @@ class SpellGraphTest {
                 "название берётся из ванильного перевода эффекта");
     }
 
-    /** Стартовая цепочка должна быть полностью бесплатной, иначе первую ману не добыть. */
+    /** Стартовая цепочка должна быть полностью бесплатной, иначе первую энергию бездны не добыть. */
     @Test
     void стартоваяЦепочкаБесплатна() {
         SpellGraph g = new SpellGraph();
@@ -203,8 +216,8 @@ class SpellGraphTest {
         g.connect(0, 0, 1, 0);
         g.connect(1, 0, 2, 0);
         g.connect(2, 0, 3, 0);
-        assertEquals(0, g.totalManaCost(),
-                "Кастер → Взгляд → Луч: блок → Извлечение должен стоить 0 маны");
+        assertEquals(0, g.totalAbyssCost(),
+                "Кастер → Взгляд → Луч: блок → Извлечение должен стоить 0 энергии бездны");
         assertTrue(g.validate().isEmpty(), "цепочка должна быть валидна: " + g.validate());
 
         // и цепочка для мобов тоже
@@ -216,7 +229,7 @@ class SpellGraphTest {
         mobs.connect(0, 0, 1, 0);
         mobs.connect(1, 0, 2, 0);
         mobs.connect(2, 0, 3, 0);
-        assertEquals(0, mobs.totalManaCost());
+        assertEquals(0, mobs.totalAbyssCost());
 
         // а анализ — тоже бесплатный
         SpellGraph scan = new SpellGraph();
@@ -227,7 +240,7 @@ class SpellGraphTest {
         scan.connect(0, 0, 1, 0);
         scan.connect(1, 0, 2, 0);
         scan.connect(2, 0, 3, 0);
-        assertEquals(0, scan.totalManaCost(), "анализ тоже должен быть бесплатным");
+        assertEquals(0, scan.totalAbyssCost(), "анализ тоже должен быть бесплатным");
     }
 
     @Test
@@ -237,7 +250,7 @@ class SpellGraphTest {
         add(g, "explode", 1, 0);
         int expected = SpellModules.get(SpellModules.id("const_ten")).manaCost()
                 + SpellModules.get(SpellModules.id("explode")).manaCost();
-        assertEquals(expected, g.totalManaCost());
+        assertEquals(expected, g.totalAbyssCost());
     }
 
     @Test

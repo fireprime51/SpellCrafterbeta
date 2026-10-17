@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "spellcraft:block/debug_energy_source"
+    }
+  }
+}

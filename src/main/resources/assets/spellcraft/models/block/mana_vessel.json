@@ -1,0 +1,41 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "spellcraft:block/mana_vessel",
+    "vessel": "spellcraft:block/mana_vessel"
+  },
+  "elements": [
+    {
+      "from": [
+        3,
+        0,
+        3
+      ],
+      "to": [
+        13,
+        12,
+        13
+      ],
+      "faces": {
+        "north": {
+          "texture": "#vessel"
+        },
+        "south": {
+          "texture": "#vessel"
+        },
+        "east": {
+          "texture": "#vessel"
+        },
+        "west": {
+          "texture": "#vessel"
+        },
+        "up": {
+          "texture": "#vessel"
+        },
+        "down": {
+          "texture": "#vessel"
+        }
+      }
+    }
+  ]
+}

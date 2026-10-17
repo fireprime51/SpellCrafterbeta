@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
  * Модификаторы делятся на конфликтные группы: нельзя включить два из одной
  * группы (шёлк и удача, по области и мгновенная добыча), но можно комбинировать
  * по одному из каждой группы. Каждый включённый модификатор стоит дополнительной
- * маны при касте.
+ * энергии бездны при касте.
  */
 public record SpellModifier(String id, String labelKey, int learnCost, double learnChance,
                             int castCost, String conflictGroup, String descriptionKey) {

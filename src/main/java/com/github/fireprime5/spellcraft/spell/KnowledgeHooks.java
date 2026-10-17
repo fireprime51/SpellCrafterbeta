@@ -3,8 +3,6 @@ package com.github.fireprime5.spellcraft.spell;
 import com.github.fireprime5.spellcraft.data.PlayerKnowledge;
 import net.minecraft.world.entity.player.Player;
 
-import java.util.List;
-
 /**
  * Общая логика открытия модулей: сканирование и модификации.
  */
@@ -54,7 +52,7 @@ public final class KnowledgeHooks {
     }
 
     /**
-     * Изучение модификатора: тратит ману и с шансом открывает его навсегда.
+     * Изучение модификатора: тратит энергию бездны и с шансом открывает его навсегда.
      *
      * @return 1 — успех, 0 — не повезло
      */
@@ -67,11 +65,13 @@ public final class KnowledgeHooks {
             return 1;
         }
         int price = SpellModifiers.learnCost(modifier, SpellModifiers.knownCount(player));
-        if (!com.github.fireprime5.spellcraft.energy.ManaCapability.has(player, price)) {
-            throw new SpellContext.SpellException("mana.insufficient", price);
+        if (!com.github.fireprime5.spellcraft.energy.AbyssEnergy.has(player, price)) {
+            throw new SpellContext.SpellException("abyss.insufficient", price);
         }
-        com.github.fireprime5.spellcraft.energy.ManaCapability.consumeMana(player, price);
-        ctx.spendMana(price);
+        // именно списание, а не ctx.spendMana: контекст здесь отдельный, не от
+        // SpellExecutor. Если бы трата пошла ещё и в счётчик, исполнитель в
+        // конце каста счёл бы price вторым разом (extra = manaSpent - cost)
+        com.github.fireprime5.spellcraft.energy.AbyssEnergy.consume(player, price);
 
         boolean success = player.level().getRandom().nextDouble() < modifier.learnChance();
         if (success) {
@@ -79,7 +79,7 @@ public final class KnowledgeHooks {
             ctx.trace("MODIFIER LEARNED: " + modifierId);
             playDiscoveryFx(ctx);
         } else {
-            ctx.trace("modifier failed: " + modifierId + " (-" + price + " mana)");
+            ctx.trace("modifier failed: " + modifierId + " (-" + price + " abyss)");
         }
         return success ? 1 : 0;
     }

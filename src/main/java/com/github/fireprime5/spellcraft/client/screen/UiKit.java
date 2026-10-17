@@ -91,6 +91,20 @@ public final class UiKit {
         return withAlpha(rgb, 0.55f + 0.45f * SpellConfig.get().uiOpacity);
     }
 
+    /**
+     * Рамка слота инвентаря: 18×18 с тёмной подложкой.
+     *
+     * <p>Своя, а не ванильный рендер: у мода своя панель и свои цвета, и
+     * ванильная рамка на тёмном фоне выглядела бы чужой.
+     */
+    public static void slot(GuiGraphics gfx, int x, int y) {
+        gfx.fill(x, y, x + 18, y + 18, SLOT_BG);
+        gfx.fill(x, y, x + 18, y + 1, BORDER_LIGHT);
+        gfx.fill(x, y, x + 1, y + 18, BORDER_LIGHT);
+        gfx.fill(x + 17, y, x + 18, y + 18, BORDER_LIGHT);
+        gfx.fill(x, y + 17, x + 18, y + 18, BORDER_LIGHT);
+    }
+
     public static void panel(GuiGraphics gfx, int x, int y, int w, int h) {
         panel(gfx, x, y, w, h, PANEL, BORDER);
     }

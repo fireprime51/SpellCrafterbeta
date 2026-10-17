@@ -22,6 +22,7 @@ public class SpellNode {
      * обязан содержать все поля узла — иначе часть данных теряется при релоге.
      */
     public static final Codec<SpellNode> FULL_CODEC = RecordCodecBuilder.create(inst -> inst.group(
+            Codec.INT.fieldOf("version").orElse(1).forGetter(n -> 1),
             ResourceLocation.CODEC.fieldOf("module").forGetter(n -> n.moduleId),
             Codec.INT.fieldOf("grid_x").orElse(0).forGetter(n -> n.gridX),
             Codec.INT.fieldOf("grid_y").orElse(0).forGetter(n -> n.gridY),
@@ -30,7 +31,7 @@ public class SpellNode {
             Codec.STRING.listOf().optionalFieldOf("mods", List.of())
                     .forGetter(n -> n.modifiers),
             Codec.STRING.optionalFieldOf("param", "").forGetter(n -> n.param)
-    ).apply(inst, (module, gx, gy, inputs, mods, param) -> {
+    ).apply(inst, (version, module, gx, gy, inputs, mods, param) -> {
         SpellNode node = new SpellNode(module, gx, gy);
         node.inputConnections = new ArrayList<>(inputs);
         node.modifiers = new ArrayList<>(mods);
@@ -77,7 +78,6 @@ public class SpellNode {
             node.sanitize();
             return node;
         }
-        // старый формат: связи лежали в списке "conns", модификаторы — в "mods"
         return loadLegacy(tag);
     }
 
@@ -88,9 +88,11 @@ public class SpellNode {
         }
         SpellNode node = new SpellNode(id, tag.getInt("grid_x"), tag.getInt("grid_y"));
         node.param = tag.getString("param");
-        var conns = tag.getList("conns", Tag.TAG_INT);
+        var conns = tag.contains("conns") ? tag.getList("conns", Tag.TAG_INT) : tag.getList("inputs", Tag.TAG_INT);
         for (int i = 0; i < conns.size(); i++) {
-            node.inputConnections.add(((net.minecraft.nbt.IntTag) conns.get(i)).getAsInt());
+            if (conns.get(i) instanceof net.minecraft.nbt.IntTag intTag) {
+                node.inputConnections.add(intTag.getAsInt());
+            }
         }
         var mods = tag.getList("mods", Tag.TAG_STRING);
         for (int i = 0; i < mods.size(); i++) {

@@ -1,0 +1,21 @@
+{
+  "_comment": "Плавильня роняет себя. Содержимое не сохраняется: игрок забрал бы из дропа бесплатные слитки, расплатившись энергией.",
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "bonus_rolls": 0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "spellcraft:smelter"
+        }
+      ]
+    }
+  ]
+}

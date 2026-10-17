@@ -1,0 +1,21 @@
+{
+  "_comment": "Роняет себя. Содержимое не выпадает: бездна и предметы в баке и на транспортёре были бы бесплатным хранением.",
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "bonus_rolls": 0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "spellcraft:abyss_pipe"
+        }
+      ]
+    }
+  ]
+}

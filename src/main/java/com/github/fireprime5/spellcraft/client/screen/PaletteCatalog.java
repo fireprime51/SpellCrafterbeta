@@ -37,7 +37,8 @@ public final class PaletteCatalog {
     }
 
     private static final String RESOURCE = "/assets/spellcraft/palette.json";
-    private static final String[] ORDER = {"numbers", "entities", "actions", "logic", "network"};
+    private static final String[] ORDER =
+            {"numbers", "entities", "actions", "logic", "effects"};
 
     private static Map<String, Variant> variants;
     private static String active = "current";

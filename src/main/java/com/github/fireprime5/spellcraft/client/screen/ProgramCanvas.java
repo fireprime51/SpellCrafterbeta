@@ -35,19 +35,26 @@ public class ProgramCanvas {
     private float panX = 0f;
     private float panY = 0f;
 
-    /** Подсвеченная ячейка (куда встанет модуль): -1 — не подсвечивать. */
-    private int highlightCellX = Integer.MIN_VALUE;
-    private int highlightCellY = Integer.MIN_VALUE;
+    /** Подсвеченная ячейка (куда встанет модуль): {@link #NO_CELL} — не подсвечивать. */
+    private int highlightCellX = NO_CELL;
+    private int highlightCellY = NO_CELL;
     private boolean highlightBlocked;
+
+    /**
+     * «Ячейки нет».
+     *
+     * <p>Раньше здесь стояло Integer.MIN_VALUE, а экран сравнивал с ним поля,
+     * которые сам же инициализировал значением -1: сравнение -1 &gt; MIN_VALUE
+     * всегда истинно, поэтому «нет выбранной ячейки» проходило как «есть» и
+     * подсвечивался мнимый квадрат (-1, -1).
+     */
+    public static final int NO_CELL = -1;
 
     /** Сегменты нарисованных связей: {x1,y1,x2,y2,targetNode,inputPort} */
     private final List<int[]> connections = new ArrayList<>();
     private int hoveredConnection = -1;
 
     private int hoveredNode = -1;
-    private int hoveredPort = -1;
-    private boolean hoveredPortIsInput;
-    private PortType hoveredPortType;
 
     private SpellGraph graphRef;
 
@@ -97,8 +104,21 @@ public class ProgramCanvas {
     }
 
     public void clearHighlight() {
-        this.highlightCellX = Integer.MIN_VALUE;
-        this.highlightCellY = Integer.MIN_VALUE;
+        this.highlightCellX = NO_CELL;
+        this.highlightCellY = NO_CELL;
+    }
+
+    /**
+     * Сообщает холсту новые границы окна.
+     *
+     * <p>Холст переживает ресайз: создавать его заново нельзя, иначе теряются
+     * зум, панорама и начатое перетаскивание модуля.
+     */
+    public void resize(int x, int y, int width, int height) {
+        this.x = x;
+        this.y = y;
+        this.w = width;
+        this.h = height;
     }
 
     /** Модули, на которых произошла ошибка в последнем касте. */
@@ -114,7 +134,11 @@ public class ProgramCanvas {
 
     /** Подсветка закреплённой ячейки (рисуется поверх всего, даже поверх палитры). */
     public void renderHighlight(GuiGraphics gfx) {
-        if (highlightCellX == Integer.MIN_VALUE) {
+        // «Ячейки нет» — это NO_CELL (-1): поля инициализируются и сбрасываются
+        // в -1, и никто не пишет сюда Integer.MIN_VALUE. Старая проверка
+        // (== Integer.MIN_VALUE) никогда не срабатывала, поэтому невыбранная
+        // ячейка подсвечивалась как (-1, -1) — фантомный квадрат в углу.
+        if (highlightCellX == NO_CELL || highlightCellY == NO_CELL) {
             return;
         }
         double cpx = cellPx();
@@ -135,6 +159,21 @@ public class ProgramCanvas {
 
     public float zoom() {
         return zoom;
+    }
+
+    /**
+     * Restores the readable starting view of the canvas.
+     *
+     * <p>This deliberately changes only the viewport; the graph and its node
+     * positions are untouched.  It gives large graphs a predictable escape
+     * hatch after zooming or panning a long way from the working area.
+     */
+    public void resetView() {
+        zoom = Math.clamp(SpellConfig.get().defaultZoom,
+                SpellConfig.MIN_ZOOM, SpellConfig.MAX_ZOOM);
+        panX = 0f;
+        panY = 0f;
+        clampPan();
     }
 
     public boolean inside(double mx, double my) {
@@ -213,26 +252,27 @@ public class ProgramCanvas {
         return new ModuleFrame.GuiSurface(gfx, font);
     }
 
-    private Rect blockRect(SpellNode node) {
+    private Rect blockRect(SpellNode node, boolean dragging) {
         double px = cellPx();
         float bx = (float) (originX() + node.gridX * px) + 2;
-        float by = (float) (originY() + node.gridY * px) + 2 - (isDragging(node) ? 3 : 0);
+        float by = (float) (originY() + node.gridY * px) + 2 - (dragging ? 3 : 0);
         int bw = Math.max(12, (int) Math.round(px) - 4);
         int bh = Math.max(14, (int) Math.round(px * 0.82f) - 10);
         return new Rect(Math.round(bx), Math.round(by), bw, bh);
     }
 
-    private boolean isDragging(SpellNode n) {
-        return graphRef != null && indexOf(n) == dragNode;
-    }
-
-    private int indexOf(SpellNode n) {
-        for (int i = 0; i < graphRef.nodes.size(); i++) {
-            if (graphRef.nodes.get(i) == n) {
-                return i;
-            }
-        }
-        return -1;
+    /**
+     * Тянется ли сейчас этот узел.
+     *
+     * <p>Раньше здесь был линейный поиск индекса узла в списке, а сам блок
+     * рисуется для каждого узла: на 512 модулях получалось O(n²) только на
+     * вычисление прямоугольников. Теперь индекс известен наверху — он и есть
+     * номер итерации.
+     *
+     * @param index позиция узла в графе
+     */
+    private boolean isDragging(int index) {
+        return dragNode == index;
     }
 
     public int nodeAt(SpellGraph graph, double mx, double my) {
@@ -240,7 +280,7 @@ public class ProgramCanvas {
             return -1;
         }
         for (int i = graph.nodes.size() - 1; i >= 0; i--) {
-            Rect r = blockRect(graph.nodes.get(i));
+            Rect r = blockRect(graph.nodes.get(i), isDragging(i));
             if (mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h) {
                 return i;
             }
@@ -257,7 +297,7 @@ public class ProgramCanvas {
         if (type == null) {
             return -1;
         }
-        Rect r = blockRect(graph.nodes.get(idx));
+        Rect r = blockRect(graph.nodes.get(idx), isDragging(idx));
         for (int p = 0; p < type.outputs(); p++) {
             int[] pos = outputPos(r, type, p);
             int m = marker();
@@ -278,7 +318,7 @@ public class ProgramCanvas {
         if (type == null) {
             return -1;
         }
-        Rect r = blockRect(graph.nodes.get(idx));
+        Rect r = blockRect(graph.nodes.get(idx), isDragging(idx));
         for (int p = 0; p < type.inputs(); p++) {
             int[] pos = inputPos(r, type, p);
             int m = marker();
@@ -303,7 +343,9 @@ public class ProgramCanvas {
         if (type == null || type.outputs() == 0) {
             return -1;
         }
-        Rect r = blockRect(graph.nodes.get(idx));
+        Rect r = blockRect(graph.nodes.get(idx), isDragging(idx));
+        // nodeAt уже доказал, что mx внутри блока, поэтому нижняя граница
+        // (mx < r.x + r.w) выполнена всегда и проверять её бессмысленно
         if (mx < r.x + r.w - 2 || mx > r.x + r.w + 6) {
             return -1;
         }
@@ -320,7 +362,8 @@ public class ProgramCanvas {
         if (type == null || type.inputs() == 0) {
             return -1;
         }
-        Rect r = blockRect(graph.nodes.get(idx));
+        Rect r = blockRect(graph.nodes.get(idx), isDragging(idx));
+        // как и выше: mx >= r.x уже следует из nodeAt
         if (mx > r.x + 2 || mx < r.x - 6) {
             return -1;
         }
@@ -332,7 +375,6 @@ public class ProgramCanvas {
         double step = portStep(r.h, count);
         int best = 0;
         double bestDist = Double.MAX_VALUE;
-        int m = marker();
         for (int p = 0; p < count; p++) {
             int py = r.y + 5 + (int) Math.round(p * step);
             double d = Math.abs(my - py);
@@ -376,23 +418,17 @@ public class ProgramCanvas {
         return hoveredNode;
     }
 
-    public int hoveredPort() {
-        return hoveredPort;
-    }
-
-    public PortType hoveredPortType() {
-        return hoveredPortType;
-    }
-
-    public boolean hoveredPortIsInput() {
-        return hoveredPortIsInput;
-    }
-
     /** Есть ли узел в точке — для отсечения панорамирования. */
     // --- отрисовка ---
 
     public void render(GuiGraphics gfx, SpellGraph graph, double mouseX, double mouseY,
                        int selectedNode) {
+        render(gfx, graph, mouseX, mouseY, selectedNode,
+                selectedNode >= 0 ? java.util.Set.of(selectedNode) : java.util.Set.of());
+    }
+
+    public void render(GuiGraphics gfx, SpellGraph graph, double mouseX, double mouseY,
+                       int selectedNode, java.util.Set<Integer> selectedNodes) {
         this.graphRef = graph;
         double px = cellPx();
 
@@ -407,7 +443,7 @@ public class ProgramCanvas {
         int r1 = cellY(y + h) + 1;
         for (int c = c0; c <= c1; c++) {
             int lx = (int) Math.round(originX() + c * px);
-            gfx.fill(lx, y, lx + 1, y + h, c == 0 ? UiKit.GRID : UiKit.GRID);
+            gfx.fill(lx, y, lx + 1, y + h, UiKit.GRID);
         }
         for (int r = r0; r <= r1; r++) {
             int ly = (int) Math.round(originY() + r * px);
@@ -429,7 +465,7 @@ public class ProgramCanvas {
             if (type == null) {
                 continue;
             }
-            Rect target = blockRect(node);
+            Rect target = blockRect(node, false);
             for (int port = 0; port < node.inputConnections.size() && port < type.inputs(); port++) {
                 int from = node.inputConnections.get(port);
                 if (from < 0 || from >= graph.nodes.size()) {
@@ -440,7 +476,7 @@ public class ProgramCanvas {
                 if (srcType == null || srcType.outputs() == 0) {
                     continue;
                 }
-                Rect src = blockRect(srcNode);
+                Rect src = blockRect(srcNode, false);
                 int srcPort = Math.min(port, srcType.outputs() - 1);
                 int[] out = outputPos(src, srcType, srcPort);
                 int[] in = inputPos(target, type, port);
@@ -464,7 +500,7 @@ public class ProgramCanvas {
             SpellNode src = graph.nodes.get(linkFrom);
             SpellModuleType type = SpellModules.get(src.moduleId);
             if (type != null) {
-                Rect r = blockRect(src);
+                Rect r = blockRect(src, false);
                 int[] out = outputPos(r, type, Math.min(linkPort, type.outputs() - 1));
                 int m = marker();
                 connection(gfx, out[0] - m, out[1] + m,
@@ -473,11 +509,7 @@ public class ProgramCanvas {
         }
 
         // блоки
-        hoveredNode = -1;
-        hoveredPort = -1;
-        hoveredPortType = null;
-        int hoveredInPort = inputPortAt(graph, mouseX, mouseY);
-        int hoveredOutPort = outputPortAt(graph, mouseX, mouseY);
+        hoveredNode = nodeAt(graph, mouseX, mouseY);
 
         Font font = UiKit.font();
         for (int i = 0; i < graph.nodes.size(); i++) {
@@ -486,8 +518,8 @@ public class ProgramCanvas {
             if (type == null) {
                 continue;
             }
-            Rect r = blockRect(node);
-            boolean over = nodeAt(graph, mouseX, mouseY) == i;
+            Rect r = blockRect(node, isDragging(i));
+            boolean over = hoveredNode == i;
 
             // панель рисуется одним общим методом с PNG-превью: две копии
             // разъезжаются при первой правке, и превью перестаёт быть правдой
@@ -503,7 +535,7 @@ public class ProgramCanvas {
                 gfx.fill(mx - 3, my - 3, mx + 4, my + 4, UiKit.error());
                 gfx.fill(mx - 1, my - 2, mx + 1, my + 2, 0xFF1B1B24);
                 gfx.fill(mx - 1, my, mx + 1, my + 1, 0xFF1B1B24);
-            } else if (i == selectedNode) {
+            } else if (selectedNodes.contains(i) || i == selectedNode) {
                 gfx.renderOutline(r.x - 1, r.y - 1, r.w + 2, r.h + 2, UiKit.ACCENT);
             } else if (i == dragNode) {
                 gfx.renderOutline(r.x - 2, r.y - 2, r.w + 4, r.h + 4, UiKit.ACCENT);
@@ -525,6 +557,17 @@ public class ProgramCanvas {
                     portShapesHollow(gfx, type.inputType(p).shape(), pos[0], pos[1] + mk, mk, color);
                 } else {
                     PortShapes.draw(gfx, type.inputType(p).shape(), pos[0], pos[1] + mk, mk, color);
+                }
+                // During a link drag, make the actual compatibility decision
+                // visible without relying on port colours alone.
+                if (linkFrom >= 0 && linkFrom < graph.nodes.size()) {
+                    SpellModuleType source = SpellModules.get(graph.nodes.get(linkFrom).moduleId);
+                    if (source != null && source.outputs() > 0) {
+                        PortType from = source.outputType(Math.min(linkPort, source.outputs() - 1));
+                        int cue = type.inputType(p).accepts(from) ? UiKit.OK : UiKit.error();
+                        gfx.renderOutline(pos[0] - mk - 2, pos[1] + mk - mk - 2,
+                                mk * 2 + 4, mk * 2 + 4, cue);
+                    }
                 }
             }
             // выходы
@@ -561,12 +604,6 @@ public class ProgramCanvas {
 
             if (over) {
                 hoveredNode = i;
-                hoveredPort = hoveredInPort >= 0 ? hoveredInPort : hoveredOutPort;
-                hoveredPortIsInput = hoveredInPort >= 0;
-                hoveredPortType = hoveredInPort >= 0
-                        ? (hoveredInPort < type.inputs() ? type.inputType(hoveredInPort) : null)
-                        : (hoveredOutPort >= 0 && hoveredOutPort < type.outputs()
-                        ? type.outputType(hoveredOutPort) : null);
             }
         }
     }

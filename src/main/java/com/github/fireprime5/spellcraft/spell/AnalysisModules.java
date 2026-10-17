@@ -11,11 +11,7 @@ import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.monster.Skeleton;
-import net.minecraft.world.entity.animal.Animal;
-import net.minecraft.world.entity.animal.WaterAnimal;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 
@@ -30,8 +26,8 @@ import static com.github.fireprime5.spellcraft.spell.PortType.POINT;
  * Модули «Анализ» и «Извлечение» — основа прогрессии и энергии.
  *
  * Анализ: сканирует блок или существо, даёт очки прогресса и открывает новые
- * модули. Извлечение: забирает ману из блока или существа (у каждого своя цена).
- * Оба модуля бесплатны по мане — иначе нельзя было бы начать.
+ * модули. Извлечение: забирает энергию бездны из блока или существа (у каждого своя цена).
+ * Оба модуля бесплатны по энергии бездны — иначе нельзя было бы начать.
  */
 public final class AnalysisModules {
 
@@ -42,7 +38,7 @@ public final class AnalysisModules {
     private static final int C_SCAN = 0xFF6FB3D2;
     private static final int C_EXTRACT = 0xFFD2A65A;
 
-    /** Сколько маны даёт тот или иной блок/моб (таблицы по id). */
+    /** Сколько энергии бездны даёт тот или иной блок/моб (таблицы по id). */
     private static final java.util.Map<String, Integer> BLOCK_MANA = java.util.Map.ofEntries(
             java.util.Map.entry("stone", 8),
             java.util.Map.entry("dirt", 5),
@@ -89,6 +85,10 @@ public final class AnalysisModules {
                 if (!(ctx.level() instanceof ServerLevel server)) {
                     throw new SpellContext.SpellException("cast.server_only");
                 }
+                // сканировать имеет смысл только то, до чего можно дотянуться:
+                // блок в любом чанке мира — это не «наблюдение», а свободный
+                // доступ к модулям со всей карты
+                ctx.requireInRange(pos);
                 BlockState state = server.getBlockState(pos);
                 if (state.isAir()) {
                     throw new SpellContext.SpellException("cast.analysis_empty");
@@ -114,10 +114,57 @@ public final class AnalysisModules {
                 if (target instanceof net.minecraft.world.entity.player.Player) {
                     throw new SpellContext.SpellException("cast.analysis_player");
                 }
+                ctx.requireEntityInRange(target);
                 String id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE
                         .getKey(target.getType()).toString();
                 out.add(SpellValue.of(
                         com.github.fireprime5.spellcraft.spell.KnowledgeHooks.scan(player, id, ctx)));
+            }
+        });
+
+        // «Анализ себя»: выдаёт личный модуль игрока.
+        //
+        // Отдельный модуль, а не флаг у analysis_mob, потому что сканировать
+        // игрока запрещено (см. analysis_mob ниже): тот модуль отдаёт награды за
+        // блоки и мобов из общей таблицы, а тут нужен доступ к самому игроку.
+        SpellModules.register(new SpellModuleType(SpellModules.id("analysis_self"), ENT, C_SCAN) {
+            @Override public int inputs() { return 0; }
+            @Override public int outputs() { return 1; }
+            @Override public int manaCost() { return 0; }
+            @Override public PortType[] outputPorts() { return new PortType[]{NUMBER}; }
+            @Override public void execute(SpellContext ctx, List<SpellValue> in, List<SpellValue> out) {
+                if (!(ctx.caster() instanceof net.minecraft.world.entity.player.Player player)) {
+                    throw new SpellContext.SpellException("cast.not_player");
+                }
+                if (!(ctx.caster().level() instanceof ServerLevel)) {
+                    throw new SpellContext.SpellException("cast.not_player");
+                }
+                String opened = com.github.fireprime5.spellcraft.data.PlayerKnowledge
+                        .discoverUnique(player);
+                if (opened.isEmpty()) {
+                    // личный модуль ровно один и открывается он один раз:
+                    // повторный анализ должен сказать об этом, а не молча
+                    // открыть второй
+                    throw new SpellContext.SpellException("cast.analysis_self");
+                }
+                ctx.trace("self analysis -> " + opened);
+                // Говорим игроку, ЧТО он нашёл. Раньше успешный каст не писал в чат
+                // ничего («успех ничем не шумит»), и открытый модуль был виден только
+                // тому, кто догадался перейти в другую вкладку палитры: выглядело так,
+                // будто «Анализ себя» не сработал.
+                var openedType = SpellModules.get(
+                        com.github.fireprime5.spellcraft.Spellcraft.id(opened));
+                var found = net.minecraft.network.chat.Component.translatable(
+                        "message.spellcraft.unique_found",
+                        openedType == null
+                                ? net.minecraft.network.chat.Component.literal(opened)
+                                : net.minecraft.network.chat.Component.translatable(openedType.nameKey()));
+                player.sendSystemMessage(found);
+                player.displayClientMessage(found, true);
+                // на выходе — личная подпись: она у каждого своя, и по ней видно,
+                // что «Анализ себя» отработал именно для этого игрока
+                out.add(SpellValue.of(
+                        UniqueModules.signatureOf(player)));
             }
         });
 
@@ -137,6 +184,9 @@ public final class AnalysisModules {
                 if (!(ctx.level() instanceof ServerLevel server)) {
                     throw new SpellContext.SpellException("cast.server_only");
                 }
+                // иначе энергию бездны можно было бы вытягивать из ancient_debris (400)
+                // в любой точке карты, не доходя до неё
+                ctx.requireInRange(pos);
                 BlockState state = server.getBlockState(pos);
                 if (state.isAir()) {
                     throw new SpellContext.SpellException("cast.extract_empty");
@@ -182,6 +232,7 @@ public final class AnalysisModules {
                 if (target instanceof net.minecraft.world.entity.player.Player) {
                     throw new SpellContext.SpellException("cast.extract_player");
                 }
+                ctx.requireEntityInRange(target);
                 int value = manaValueOf(target);
                 if (value <= 0) {
                     throw new SpellContext.SpellException("cast.extract_nothing",
@@ -204,11 +255,11 @@ public final class AnalysisModules {
     }
 
     /**
-     * Забирает ману, но не больше потолка.
+     * Забирает энергию бездны, но не больше потолка.
      *
-     * <p>Каждая следующая добыча с той же цели даёт меньше маны
+     * <p>Каждая следующая добыча с той же цели даёт меньше энергии бездны
      * (100%, 50%, 33%, ... до 10%), поэтому один блок нельзя «выдоить»
-     * и держать на нём всю ману.
+     * и держать на нём всю энергию бездны.
      */
     private static int drainMana(net.minecraft.world.entity.player.Player player, int amount,
                                 String targetKey) {
@@ -216,9 +267,15 @@ public final class AnalysisModules {
         int percent = times < com.github.fireprime5.spellcraft.data.PlayerKnowledge.DRAIN_FALLOFF.length
                 ? com.github.fireprime5.spellcraft.data.PlayerKnowledge.DRAIN_FALLOFF[times]
                 : 10;
-        int scaled = Math.max(1, amount * percent / 100);
+        // без нижней единицы: раньше здесь стоял Math.max(1, ...), и каждая
+        // из 512 целей навсегда оставалась краном хотя бы в одну энергию бездны — то есть
+        // любой каст «Анализ + Извлечение» медленно наполнял кошелёк
+        int scaled = amount * percent / 100;
+        if (scaled <= 0) {
+            return 0;
+        }
         com.github.fireprime5.spellcraft.data.PlayerKnowledge.recordDrain(player, targetKey);
-        int added = com.github.fireprime5.spellcraft.energy.ManaCapability.addMana(player, scaled);
+        int added = com.github.fireprime5.spellcraft.energy.AbyssEnergy.add(player, scaled);
         return Math.max(0, added);
     }
 

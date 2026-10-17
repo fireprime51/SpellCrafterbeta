@@ -6,6 +6,7 @@ import com.github.fireprime5.spellcraft.spell.SpellGraph;
 import com.github.fireprime5.spellcraft.spell.SpellModifiers;
 import com.github.fireprime5.spellcraft.spell.SpellModules;
 import com.github.fireprime5.spellcraft.spell.StartModules;
+import com.github.fireprime5.spellcraft.spell.UniqueModules;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -31,14 +32,14 @@ class PlayerKnowledgeTest {
 
     @Test
     void стартоваяЦепочкаЕсть() {
-        // бесплатные модули: вся цепочка добычи маны и знаний
+        // бесплатные модули: вся цепочка добычи энергии бездны и знаний
         for (String id : new String[]{"caster_entity", "entity_look", "raycast_entity",
                 "raycast_block", "analysis_block", "analysis_mob", "extract_block",
                 "extract_mob"}) {
             assertNotNull(SpellModules.get(SpellModules.id(id)), "нет стартового модуля " + id);
             assertTrue(StartModules.isStartModule(Spellcraft.id(id)), id + " должен быть стартовым");
             assertEquals(0, SpellModules.get(SpellModules.id(id)).manaCost(),
-                    id + " должен быть бесплатным, иначе первую ману не добыть");
+                    id + " должен быть бесплатным, иначе первую энергию бездны не добыть");
         }
 
     }
@@ -120,11 +121,11 @@ class PlayerKnowledgeTest {
     void стоимостьМодификаторовДобавляется() {
         SpellGraph g = new SpellGraph();
         var node = g.addNode(SpellModules.id("break_block"), 0, 0);
-        int base = g.totalManaCost();
+        int base = g.totalAbyssCost();
         node.modifiers.add(SpellModifiers.FORTUNE.id());
         node.modifiers.add(SpellModifiers.AREA.id());
         assertEquals(base + SpellModifiers.FORTUNE.castCost() + SpellModifiers.AREA.castCost(),
-                g.totalManaCost());
+                g.totalAbyssCost());
     }
 
     @Test
@@ -140,6 +141,66 @@ class PlayerKnowledgeTest {
         assertTrue(g.validate().stream()
                         .anyMatch(i -> i.key().equals("graph.modifier_conflict")),
                 "шёлк + удача должны конфликтовать: " + g.validate());
+    }
+
+    /**
+     * Идентификаторы модулей хранятся только с пространством имён.
+     *
+     * <p>«Анализ себя» когда-то записывал личный модуль голым путём
+     * ({@code "unique_resonance"}). Клиент разбирал такое через
+     * {@code ResourceLocation.tryParse} как {@code minecraft:unique_resonance}, а
+     * палитра искала {@code spellcraft:unique_resonance} — открытый модуль не
+     * появлялся нигде. Проверка ловит именно эту форму записи.
+     */
+    @Test
+    void модульБезПространстваИмёнДополняетсяДоНашего() {
+        var knowledge = new PlayerKnowledge.Knowledge(
+                Set.of("unique_resonance", "analysis_self"),
+                Set.of(), List.of(), Set.of());
+        assertTrue(knowledge.modules().contains("spellcraft:unique_resonance"),
+                "голый путь не дополнен до spellcraft: — " + knowledge.modules());
+        assertTrue(knowledge.modules().contains("spellcraft:analysis_self"),
+                "голый путь не дополнен до spellcraft: — " + knowledge.modules());
+    }
+
+    /** Чужое пространство имён трогать нельзя. */
+    @Test
+    void чужиеИдентификаторыНеПереписываются() {
+        var knowledge = new PlayerKnowledge.Knowledge(
+                Set.of("minecraft:break_block", "spellcraft:extract_mob"),
+                Set.of(), List.of(), Set.of());
+        assertTrue(knowledge.modules().contains("minecraft:break_block"),
+                "чужое пространство имён переписано — " + knowledge.modules());
+        assertTrue(knowledge.modules().contains("spellcraft:extract_mob"));
+        assertEquals(2, knowledge.modules().size());
+    }
+
+    /**
+     * В {@code scanned} лежат id сущностей без пространства имён («zombie»),
+     * и дописывать им наше было бы ошибкой.
+     */
+    @Test
+    void просканированныеСущностиНеНормализуются() {
+        var knowledge = new PlayerKnowledge.Knowledge(
+                Set.of(), Set.of("zombie", "minecraft:creeper"), List.of(), Set.of());
+        assertTrue(knowledge.scanned().contains("zombie"),
+                "id сущности нельзя менять — " + knowledge.scanned());
+        assertTrue(knowledge.scanned().contains("minecraft:creeper"));
+    }
+
+    /**
+     * Открытый личный модуль обязан быть в списке изученных под полным id.
+     *
+     * <p>Именно этот список уезжает на клиент, и палитра ищет в нём
+     * {@code spellcraft:unique_resonance}.
+     */
+    @Test
+    void открытыйЛичныйМодульВиденПодПолнымИдентификатором() {
+        var knowledge = new PlayerKnowledge.Knowledge(
+                Set.of(UniqueModules.RESONANCE), Set.of(), List.of(), Set.of(),
+                Map.of(), Set.of(), UniqueModules.RESONANCE, 0);
+        assertTrue(knowledge.modules().contains("spellcraft:" + UniqueModules.RESONANCE),
+                "личный модуль записан не так, как его ищет палитра — " + knowledge.modules());
     }
 
     @Test
@@ -166,12 +227,16 @@ class PlayerKnowledgeTest {
         assertFalse(StartModules.isStartModule(Spellcraft.id("explode")));
         assertFalse(StartModules.isStartModule(Spellcraft.id("add")));
         assertTrue(StartModules.isStartModule(Spellcraft.id("extract_block")));
-        // вся цепочка добычи первой маны: 8 модулей, и все бесплатные
-        assertEquals(8, StartModules.all().size(),
-                "стартовых модулей должно быть 8");
+        // цепочка добычи первой энергии бездны (8) плюс два модуля адреса, из которых
+        // собирается первый портал, «здесь» и пять констант:
+        // константы — подножие, а не умение, и «здесь» без него не собрать
+        assertEquals(17, StartModules.all().size(),
+                "стартовых модулей должно быть 16");
         for (String path : List.of("caster_entity", "entity_look", "raycast_entity",
                 "raycast_block", "analysis_block", "analysis_mob",
-                "extract_block", "extract_mob")) {
+                "extract_block", "extract_mob", "self_position",
+                "const_zero", "const_one", "const_five",
+                "const_ten", "const_neg_one")) {
             assertTrue(StartModules.isStartModule(Spellcraft.id(path)),
                     "стартовый модуль не открыт: " + path);
         }

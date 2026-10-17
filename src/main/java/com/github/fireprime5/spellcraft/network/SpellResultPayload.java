@@ -53,7 +53,7 @@ public record SpellResultPayload(List<String> trace, List<SpellValue> stack,
         tag.put("issues", issues);
         tag.put("error_nodes", errorNodes);
         tag.putBoolean("success", payload.success());
-        tag.putInt("mana", payload.manaSpent());
+        tag.putInt("abyss", payload.manaSpent());
         buf.writeNbt(tag);
     }
 
@@ -79,7 +79,7 @@ public record SpellResultPayload(List<String> trace, List<SpellValue> stack,
             errorNodes.add(((net.minecraft.nbt.IntTag) t).getAsInt());
         }
         return new SpellResultPayload(trace, stack, issues, tag.getBoolean("success"),
-                tag.getInt("mana"), errorNodes);
+                tag.getInt("abyss"), errorNodes);
     }
 
     @Override

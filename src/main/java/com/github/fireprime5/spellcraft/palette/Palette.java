@@ -6,9 +6,9 @@ import com.github.fireprime5.spellcraft.spell.SpellModuleType;
 /**
  * Палитра мода — единственный набор цветов для текстур, блоков и интерфейса.
  *
- * <p>Источник правды — {@code tools/models/palette.json}; эти константы его
- * зеркало, а {@code PaletteTest} падает, если они разошлись. Править нужно json,
- * потом запускать {@code tools/models/generate_models.py}.
+ * <p>Источник правды — {@code assets/spellcraft/palette.json}; эти константы его
+ * зеркало, а {@code PaletteTest} падает, если они разошлись. При правке json
+ * константы ниже нужно привести к тому же виду вручную.
  *
  * <p>Логика выбора:
  *
@@ -16,12 +16,16 @@ import com.github.fireprime5.spellcraft.spell.SpellModuleType;
  *   <li><b>Каркас — холодный.</b> Панели, рамки, сетка и порты сидят в
  *       диапазоне 190–240 по hue и низкой насыщенности, поэтому интерфейс
  *       не спорит сам с собой.</li>
- *   <li><b>Категории модулей — тёплая шкала.</b> Пять оттенков от бледного
+ *   <li><b>Категории модулей — тёплая шкала.</b> Четыре оттенка от бледного
  *       янтаря к медному. Это ровно то, что делает референс: тёплым помечено
  *       содержимое, холодным — оболочка.</li>
+ *   <li><b>Эффекты — фиолетовый.</b> Единственный модуль вне тёплой шкалы среди
+ *       категорий. Это осознанно: тридцать семь эффектов в тёплом ряду сливались
+ *       бы с уроном и лечением, а фиолетовый читается как отдельная сущность
+ *       и заодно держится подальше от красного цвета ошибки.</li>
  *   <li><b>Ошибка — пурпур.</b> {@link #ERROR} специально вне тёплой шкалы:
- *       медный {@link #CATEGORY_NETWORK} и оранжевый {@link #CATEGORY_LOGIC}
- *       слишком близки к красному, и сломанный узел нельзя спутать с рабочим.</li>
+ *       медный {@link #CATEGORY_LOGIC} слишком близок к красному, и сломанный
+ *       узел нельзя спутать с рабочим.</li>
  * </ul>
  *
  * <p>Шкала категорий и цвет ошибки меняются в игре клавишей, поэтому это
@@ -62,7 +66,8 @@ public final class Palette {
     public static final int CATEGORY_ENTITIES = 0xFFFFC266;
     public static final int CATEGORY_ACTIONS = 0xFFFFA352;
     public static final int CATEGORY_LOGIC = 0xFFF8834C;
-    public static final int CATEGORY_NETWORK = 0xFFE86A52;
+    /** Фиолетовый, намеренно вне тёплой шкалы категорий. */
+    public static final int CATEGORY_EFFECTS = 0xFFC77DFF;
 
     // порты: холодная шкала, смысл несёт форма маркера, а не цвет
     public static final int PORT_NUMBER = 0xFF7FD4F5;
@@ -70,6 +75,7 @@ public final class Palette {
     public static final int PORT_POINT = 0xFF5FB8F0;
     public static final int PORT_VECTOR = 0xFF8C9BF0;
     public static final int PORT_ITEM = 0xFFA8D8E8;
+    public static final int PORT_LOCATION = 0xFF3FD6A8;
     public static final int PORT_ANY = 0xFFB4C4D4;
 
 
@@ -80,8 +86,8 @@ public final class Palette {
      * Значения меняются только через {@link #setCategories(int[], int)}.
      */
     private static volatile int[] categories = {
-            CATEGORY_NUMBERS, CATEGORY_ENTITIES, CATEGORY_ACTIONS,
-            CATEGORY_LOGIC, CATEGORY_NETWORK,
+            CATEGORY_NUMBERS, CATEGORY_ENTITIES, CATEGORY_ACTIONS, CATEGORY_LOGIC,
+            CATEGORY_EFFECTS,
     };
 
     private static volatile int errorColor = ERROR;
@@ -124,7 +130,7 @@ public final class Palette {
     public static void reset() {
         setCategories(categories(), ERROR);
         categories = new int[]{CATEGORY_NUMBERS, CATEGORY_ENTITIES, CATEGORY_ACTIONS,
-                CATEGORY_LOGIC, CATEGORY_NETWORK};
+                CATEGORY_LOGIC, CATEGORY_EFFECTS};
         errorColor = ERROR;
     }
 
@@ -210,6 +216,7 @@ public final class Palette {
             case POINT -> PORT_POINT;
             case VECTOR -> PORT_VECTOR;
             case ITEM -> PORT_ITEM;
+            case LOCATION -> PORT_LOCATION;
             case ANY -> PORT_ANY;
         };
     }

@@ -15,13 +15,23 @@ public enum PortType {
     POINT("point", Palette.PORT_POINT, Shape.DIAMOND),
     VECTOR("vector", Palette.PORT_VECTOR, Shape.SQUARE),
     ITEM("item", Palette.PORT_ITEM, Shape.CROSS),
-    ANY("any", Palette.PORT_ANY, Shape.SQUARE);
+    /**
+     * Место: точка вместе с измерением.
+     *
+     * <p>Отдельный тип от {@link #POINT} не для красоты: портал в Незер и портал
+     * в той же точке обычного мира — это разные адреса, а порт хранит только
+     * число. Пока оба типа были бы одним, схема «точка → портал» даже не знала
+     * бы, в какое измерение вести.
+     */
+    LOCATION("location", Palette.PORT_LOCATION, Shape.HEXAGON),
+    /** A wildcard port uses an outline so it is distinguishable from VECTOR without color. */
+    ANY("any", Palette.PORT_ANY, Shape.OUTLINE);
 
     private static final PortType[] FILL = {ANY, ANY, ANY, ANY};
 
     /** Форма маркера порта — помогает различать типы значений. */
     public enum Shape {
-        CIRCLE, SQUARE, DIAMOND, TRIANGLE, CROSS
+        CIRCLE, SQUARE, DIAMOND, TRIANGLE, CROSS, HEXAGON, OUTLINE
     }
 
     private final String key;

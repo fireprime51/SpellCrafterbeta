@@ -27,6 +27,18 @@ public final class SpellModules {
         ALIASES.put(modulePath, words);
     }
 
+    /**
+     * Русские синонимы модуля (слова через пробел) или {@code ""}.
+     *
+     * <p>Отдельный доступ нужен команде {@code /spellcraft give}: в тестах
+     * переводы не загружены, {@code Component.translatable} возвращает сам ключ, и
+     * поиск по названию на языке игроки проверить нечем. Синонимы хранятся
+     * прямо в коде, поэтому поиск по ним работает и в игре, и в тестах.
+     */
+    public static String aliasesOf(String modulePath) {
+        return ALIASES.getOrDefault(modulePath, "");
+    }
+
     static {
         alias("damage", "урон атака ударить удар");
         alias("heal", "лечение лечить здоровье хил");
@@ -37,6 +49,27 @@ public final class SpellModules {
         alias("sound", "звук слышно");
         alias("raycast_entity", "луч сущность цель поражение");
         alias("raycast_block", "луч блок точка стена");
+        alias("equals", "равно сравнить одинаково");
+        alias("not_equals", "не равно различается");
+        alias("greater", "больше больше");
+        alias("less", "меньше меньше");
+        alias("greater_or_equal", "не меньше");
+        alias("less_or_equal", "не больше");
+        alias("is_mob", "моб существо живое");
+        alias("is_item", "предмет дроп");
+        alias("is_projectile", "снаряд пуля стрела");
+        alias("is_vehicle", "транспорт вагонетка лодка");
+        alias("is_alive", "живой жив");
+        alias("freeze", "заморозить стоять обездвижить");
+        alias("unfreeze", "разморозить");
+        alias("vector_distance", "расстояние между векторами");
+        alias("vector_lerp", "точка между интерполяция");
+        alias("delay_push", "отложить позже очередь");
+        alias("delay_pop", "забрать отложенное очередь");
+        alias("entities_in_radius", "найти существ радиус рядом цели несколько толпа");
+        alias("shield", "щит защита отбить отразить спереди");
+        alias("barrier", "барьер защита сфера вокруг себя круг");
+        alias("entities_count_in_radius", "сколько существ рядом радиус счётчик толпа");
         alias("caster_entity", "кастер игрок я");
         alias("entity_look", "взгляд направление взглянуть");
         alias("entity_position", "позиция координаты где");
@@ -77,8 +110,6 @@ public final class SpellModules {
         alias("block_light", "свет освещение");
         alias("time_of_day", "время суток день ночь");
         alias("world_spawn", "спавн возрождение");
-        alias("held_item", "предмет рука");
-        alias("item_count", "количество предметов инвентарь");
         alias("compare", "сравнить сравнение");
         alias("select", "выбор условие если");
         alias("duplicate", "дублировать копия раздвоить");
@@ -86,12 +117,16 @@ public final class SpellModules {
         alias("and", "и логика");
         alias("or", "или логика");
         alias("select_random", "случайный выбор рандом");
-        alias("set_health", "здоровье установить");
         alias("heal_percent", "лечение процент хил");
         alias("ignite", "поджечь огонь гореть");
-        alias("effect_speed", "скорость эффект зелье бег");
-        alias("teleport", "телепорт перенести");
         alias("lightning", "молния разряд");
+        // личные: иначе «резонанс» и «вечность» не находились бы по-русски
+        alias("unique_signature", "подпись личный номер личн");
+        alias("unique_resonance", "резонанс личный множитель личн");
+        alias("unique_depth", "глубина личный изучено личн");
+        alias("unique_oath", "обет личный плата личн");
+        alias("unique_ledger", "счёт счет личный потрачено личн");
+        alias("unique_eternity", "вечность бессмертие личный броня личн");
         alias("arrow", "стрела снаряд");
         alias("sound_at", "звук");
         alias("create_water", "вода жидкость залить");
@@ -103,7 +138,6 @@ public final class SpellModules {
         alias("coord_x", "координата x");
         alias("coord_y", "координата y");
         alias("coord_z", "координата z");
-        alias("place_block", "постройка поставить блок");
         alias("place_held_block", "построить блок в руке");
         alias("stack_push", "стек положить push");
         alias("stack_pop", "стек взять pop");
@@ -125,17 +159,6 @@ public final class SpellModules {
         alias("stack_clear_slots", "ячейки очистить освободить сбросить");
 
         // предметы и блоки
-        alias("block_at", "блок прочитать взять из мира что за блок предмет");
-        alias("fluid_at", "жидкость ведро вода лава жидкость взять");
-        alias("held_slot", "слот хотбар ячейка быстрого доступа предмет");
-        alias("empty_hand", "пустая рука рука ничего нет");
-        alias("offhand_item", "вторая рука вторая_рука");
-        alias("swap_blocks", "поменять местами обменять блоки переставить");
-        alias("fill_region", "залить область прямоугольник заполнить область");
-        alias("clear_block", "убрать блок очистить удалить без добычи");
-        alias("give_item", "выдать предмет дать в инвентарь получить");
-        alias("drop_item", "выбросить предмет выронить на землю дропнуть");
-        alias("consume_item", "забрать предмет изъять из инвентаря снять");
         alias("modifier_fortune", "модификатор удача фортуна добыча");
         alias("modifier_silk", "модификатор шёлковое касание добыча");
         alias("modifier_area", "модификатор по области добыча");
@@ -147,8 +170,8 @@ public final class SpellModules {
         alias("modifier_powerful", "модификатор взрыв усиленный мощный");
         alias("analysis_block", "анализ блок изучить исследовать");
         alias("analysis_mob", "анализ моб существо изучить исследовать");
-        alias("extract_block", "извлечение блок мана добыча");
-        alias("extract_mob", "извлечение моб мана добыча");
+        alias("extract_block", "извлечение блок энергия бездны добыча");
+        alias("extract_mob", "извлечение моб энергия бездны добыча");
 
         // векторы и геометрия
         alias("vector_from_coords", "вектор по координатам собрать направление xyz");
@@ -168,6 +191,12 @@ public final class SpellModules {
         alias("point_distance", "расстояние между точками дистанция");
         alias("point_direction", "направление на точку от точки к точке");
         alias("point_midpoint", "середина точка отрезка центр между");
+        alias("location_here", "здесь адрес место точка измерение");
+        alias("location_overworld", "адрес обычный мир измерение место");
+        alias("location_nether", "адрес незер измерение место");
+        alias("location_end", "адрес энд измерение место");
+        alias("portal_gate", "портал врата двусторонний переход между измерениями");
+        alias("portal_passage", "портал проход односторонний выход измерение");
         alias("point_offset", "сдвинуть точку сместить сдвиг");
         alias("line_blocks", "блоков в линии длина луча луч до дальность");
         alias("sin", "синус");
@@ -190,14 +219,32 @@ public final class SpellModules {
 
     public static List<SpellModuleType> all() {
         if (sortedCache == null) {
-            sortedCache = new ArrayList<>(MODULES.values());
-            sortedCache.sort(Comparator.comparing(SpellModules::sortKey));
+            sortedCache = Collections.unmodifiableList(sort(new ArrayList<>(MODULES.values())));
         }
-        return Collections.unmodifiableList(sortedCache);
+        return sortedCache;
     }
 
-    private static String sortKey(SpellModuleType t) {
-        return t.category().ordinal() + "_" + t.id().getPath();
+    /**
+     * Порядок вывода: категория, затем подраздел, затем имя.
+     *
+     * <p>Подраздел обязателен именно здесь, а не только в палитре: сортировка
+     * была по категории и пути, из-за чего модули одного подраздела оказывались
+     * разнесены по списку (например, «Взять из стека» уезжало к «ш», а «Положить
+     * в стек» стояло в начале), и заголовки групп мерцали бы по несколько раз
+     * за прокрутку.
+     */
+    private static List<SpellModuleType> sort(List<SpellModuleType> types) {
+        java.util.Map<String, Integer> order = new java.util.HashMap<>();
+        List<String> subs = SpellSubsections.order();
+        for (int i = 0; i < subs.size(); i++) {
+            order.put(subs.get(i), i);
+        }
+        List<SpellModuleType> copy = new ArrayList<>(types);
+        copy.sort(Comparator
+                .comparingInt((SpellModuleType t) -> t.category().ordinal())
+                .thenComparingInt(t -> order.getOrDefault(t.subCategory(), subs.size()))
+                .thenComparing(t -> t.id().getPath()));
+        return copy;
     }
 
     public static String shortName(SpellModuleType type) {
@@ -219,8 +266,7 @@ public final class SpellModules {
                 result.add(t);
             }
         }
-        result.sort(Comparator.comparing(SpellModules::sortKey));
-        return result;
+        return sort(result);
     }
 
     private static boolean matches(SpellModuleType type, String q) {
@@ -231,8 +277,12 @@ public final class SpellModules {
         String category = normalize(net.minecraft.network.chat.Component
                 .translatable(type.category().translationKey()).getString());
         String alias = normalize(ALIASES.get(type.id().getPath()));
+        // название подраздела ищется тоже: «стек» должен находить и «Стек» как
+        // группу, и конкретный «Взять из стека»
+        String sub = normalize(net.minecraft.network.chat.Component
+                .translatable(SpellSubsections.nameKey(type.subCategory())).getString());
         return path.contains(q) || ns.contains(q) || name.contains(q) || category.contains(q)
-                || (!alias.isEmpty() && alias.contains(q));
+                || sub.contains(q) || (!alias.isEmpty() && alias.contains(q));
     }
 
     /**
@@ -262,8 +312,11 @@ public final class SpellModules {
         StackModules.registerAll();
         WorldModules.registerAll();
         GeometryModules.registerAll();
-        ItemModules.registerAll();
+        UniqueModules.registerAll();
+                PortalModules.registerAll();
         WorldModules.registerEffectModules();
+        ArmorModules.registerAll();
+        ShieldModules.registerAll();
     }
 
     public static ResourceLocation id(String path) {

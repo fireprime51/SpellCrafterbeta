@@ -1,0 +1,41 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "spellcraft:block/abyss_tank",
+    "abyss_tank": "spellcraft:block/abyss_tank"
+  },
+  "elements": [
+    {
+      "from": [
+        2,
+        0,
+        2
+      ],
+      "to": [
+        14,
+        16,
+        14
+      ],
+      "faces": {
+        "north": {
+          "texture": "#abyss_tank"
+        },
+        "south": {
+          "texture": "#abyss_tank"
+        },
+        "east": {
+          "texture": "#abyss_tank"
+        },
+        "west": {
+          "texture": "#abyss_tank"
+        },
+        "up": {
+          "texture": "#abyss_tank"
+        },
+        "down": {
+          "texture": "#abyss_tank"
+        }
+      }
+    }
+  ]
+}

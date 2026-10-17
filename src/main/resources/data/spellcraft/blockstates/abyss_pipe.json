@@ -1,0 +1,196 @@
+{
+  "variants": {
+    "north=false,east=false,south=false,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_core"
+    },
+    "north=true,east=false,south=false,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_n"
+    },
+    "north=false,east=true,south=false,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_e"
+    },
+    "north=true,east=true,south=false,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_ne"
+    },
+    "north=false,east=false,south=true,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_s"
+    },
+    "north=true,east=false,south=true,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_ns"
+    },
+    "north=false,east=true,south=true,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_es"
+    },
+    "north=true,east=true,south=true,west=false,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nes"
+    },
+    "north=false,east=false,south=false,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_w"
+    },
+    "north=true,east=false,south=false,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nw"
+    },
+    "north=false,east=true,south=false,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_ew"
+    },
+    "north=true,east=true,south=false,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_new"
+    },
+    "north=false,east=false,south=true,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_sw"
+    },
+    "north=true,east=false,south=true,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nsw"
+    },
+    "north=false,east=true,south=true,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_esw"
+    },
+    "north=true,east=true,south=true,west=true,up=false,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nesw"
+    },
+    "north=false,east=false,south=false,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_u"
+    },
+    "north=true,east=false,south=false,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nu"
+    },
+    "north=false,east=true,south=false,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_eu"
+    },
+    "north=true,east=true,south=false,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_neu"
+    },
+    "north=false,east=false,south=true,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_su"
+    },
+    "north=true,east=false,south=true,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nsu"
+    },
+    "north=false,east=true,south=true,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_esu"
+    },
+    "north=true,east=true,south=true,west=false,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nesu"
+    },
+    "north=false,east=false,south=false,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_wu"
+    },
+    "north=true,east=false,south=false,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nwu"
+    },
+    "north=false,east=true,south=false,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_ewu"
+    },
+    "north=true,east=true,south=false,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_newu"
+    },
+    "north=false,east=false,south=true,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_swu"
+    },
+    "north=true,east=false,south=true,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_nswu"
+    },
+    "north=false,east=true,south=true,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_eswu"
+    },
+    "north=true,east=true,south=true,west=true,up=true,down=false": {
+      "model": "spellcraft:block/abyss_pipe_neswu"
+    },
+    "north=false,east=false,south=false,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_d"
+    },
+    "north=true,east=false,south=false,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nd"
+    },
+    "north=false,east=true,south=false,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_ed"
+    },
+    "north=true,east=true,south=false,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_ned"
+    },
+    "north=false,east=false,south=true,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_sd"
+    },
+    "north=true,east=false,south=true,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nsd"
+    },
+    "north=false,east=true,south=true,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_esd"
+    },
+    "north=true,east=true,south=true,west=false,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nesd"
+    },
+    "north=false,east=false,south=false,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_wd"
+    },
+    "north=true,east=false,south=false,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nwd"
+    },
+    "north=false,east=true,south=false,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_ewd"
+    },
+    "north=true,east=true,south=false,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_newd"
+    },
+    "north=false,east=false,south=true,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_swd"
+    },
+    "north=true,east=false,south=true,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nswd"
+    },
+    "north=false,east=true,south=true,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_eswd"
+    },
+    "north=true,east=true,south=true,west=true,up=false,down=true": {
+      "model": "spellcraft:block/abyss_pipe_neswd"
+    },
+    "north=false,east=false,south=false,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_ud"
+    },
+    "north=true,east=false,south=false,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nud"
+    },
+    "north=false,east=true,south=false,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_eud"
+    },
+    "north=true,east=true,south=false,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_neud"
+    },
+    "north=false,east=false,south=true,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_sud"
+    },
+    "north=true,east=false,south=true,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nsud"
+    },
+    "north=false,east=true,south=true,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_esud"
+    },
+    "north=true,east=true,south=true,west=false,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nesud"
+    },
+    "north=false,east=false,south=false,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_wud"
+    },
+    "north=true,east=false,south=false,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nwud"
+    },
+    "north=false,east=true,south=false,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_ewud"
+    },
+    "north=true,east=true,south=false,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_newud"
+    },
+    "north=false,east=false,south=true,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_swud"
+    },
+    "north=true,east=false,south=true,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_nswud"
+    },
+    "north=false,east=true,south=true,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_eswud"
+    },
+    "north=true,east=true,south=true,west=true,up=true,down=true": {
+      "model": "spellcraft:block/abyss_pipe_neswud"
+    }
+  }
+}

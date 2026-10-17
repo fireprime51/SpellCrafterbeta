@@ -1,0 +1,41 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "spellcraft:block/smelter",
+    "smelter": "spellcraft:block/smelter"
+  },
+  "elements": [
+    {
+      "from": [
+        1,
+        0,
+        1
+      ],
+      "to": [
+        15,
+        13,
+        15
+      ],
+      "faces": {
+        "north": {
+          "texture": "#smelter"
+        },
+        "south": {
+          "texture": "#smelter"
+        },
+        "east": {
+          "texture": "#smelter"
+        },
+        "west": {
+          "texture": "#smelter"
+        },
+        "up": {
+          "texture": "#smelter"
+        },
+        "down": {
+          "texture": "#smelter"
+        }
+      }
+    }
+  ]
+}

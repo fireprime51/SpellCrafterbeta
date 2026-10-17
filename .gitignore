@@ -25,5 +25,9 @@ logs/
 out/
 bin/
 
+# Служебное окружение агента
+.opencode/
+.vecta/
+
 # OS
 .DS_Store
