@@ -715,14 +715,16 @@ class NetworkLineTest {
     @Test
     void жидкостьВписываетсяВОтрезок() {
         NetworkGeometry.Segment отрезок = new NetworkGeometry.Segment(5, 5, 5, 7, 7, 7);
-        NetworkGeometry.Segment сок = NetworkGeometry.inset(отрезок, 0.5);
+        NetworkGeometry.Segment сок = NetworkGeometry.inset(отрезок,
+                NetworkGeometry.FLUID_INSET);
         assertTrue(сок.x2() - сок.x1() < отрезок.x2() - отрезок.x1(),
                 "жидкость уже оболочки по X");
-        assertEquals(5.5, сок.x1(), "жидкость вписана в сечение, а не сдвинута");
-        assertEquals(6.5, сок.x2(), "жидкость вписана в сечение с другой стороны");
+        assertEquals(5.25, сок.x1(), 0.001, "жидкость вписана в сечение, а не сдвинута");
+        assertEquals(6.75, сок.x2(), 0.001, "жидкость вписана в сечение с другой стороны");
         // нулевая ширина не схлопывается в точку
         NetworkGeometry.Segment тонкий = new NetworkGeometry.Segment(5, 5, 5, 5, 7, 7);
-        NetworkGeometry.Segment внутри = NetworkGeometry.inset(тонкий, 0.5);
+        NetworkGeometry.Segment внутри = NetworkGeometry.inset(тонкий,
+                NetworkGeometry.FLUID_INSET);
         assertEquals(тонкий.x1(), внутри.x1(),
                 "сторона без толщины остаётся на месте, а не пропадает");
     }

@@ -150,7 +150,7 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 if (труба && NetworkFluids.виднаЖидкость(линия)) {
                     // жидкость уже отступа: она должна быть видна сквозь стенку,
                     // иначе стекло закрывает её целиком
-                    box(содержимое, NetworkGeometry.inset(отрезок, 0.5), uv, краска);
+                    box(содержимое, NetworkGeometry.inset(отрезок, NetworkGeometry.FLUID_INSET), uv, краска);
                 }
             }
         }
@@ -163,7 +163,7 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
      * <p>Цвет несут края спрайта, а середина почти прозрачна: сквозь неё и видно
      * жидкость внутри.
      */
-    private static final float[] СТЕКЛО = {1f, 1f, 1f, 0.35f};
+    private static final float[] СТЕКЛО = {1f, 1f, 1f, 0.5f};
 
     /**
      * Цвет жидкости по её виду.
@@ -173,9 +173,12 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
      * дёргать то и другое из блока линии — лишняя связность ради оттенка.
      */
     private static float[] цветЖидкости(NetworkLine линия) {
+        // источник и текучая жидкость — разные id, а выглядят одинаково: и то и
+        // другое встречается в трубе, и без второй строки труба с водой из
+        // текучей воды красилась бы нейтральным цветом
         int argb = switch (String.valueOf(линия.fluid())) {
-            case "minecraft:water" -> 0x3F76E4;
-            case "minecraft:lava" -> 0xF76B0C;
+            case "minecraft:water", "minecraft:flowing_water" -> 0x3F76E4;
+            case "minecraft:lava", "minecraft:flowing_lava" -> 0xF76B0C;
             default -> 0xB4D8E8;
         };
         return new float[]{((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,

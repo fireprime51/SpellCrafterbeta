@@ -5,6 +5,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+
+import java.util.Set;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
@@ -121,6 +123,24 @@ public final class NetworkFluids {
         return слито;
     }
 
+    /**
+     * Труба подключена, а жидкости в ней нет.
+     *
+     * <p>Такое место стоит назвать один раз: иначе снаружи это выглядит как
+     * «труба не работает», и догадываться приходится по картинке. Positions are
+     * remembered so the same block does not repeat itself every tick.
+     */
+    private static void претензия(Level уровень, BlockPos позиция) {
+        if (!претензии.contains(позиция) && претензии.size() < 256) {
+            претензии.add(позиция.immutable());
+            com.github.fireprime5.spellcraft.Spellcraft.LOGGER.warn(
+                    "Сеть: труба в {} подключена, но пуста: рядом нет ни бака, "
+                            + "ни источника", позиция);
+        }
+    }
+
+    private static final Set<BlockPos> претензии = new java.util.HashSet<>();
+
     /** Заполнена ли труба: по этому рисуется видимая жидкость. */
     public static boolean виднаЖидкость(NetworkLine линия) {
         return линия.stored() > 0;
@@ -149,6 +169,9 @@ public final class NetworkFluids {
             return;
         }
         узнатьЖидкость(уровень, позиция, линия);
+        if (линия.connected() && линия.stored() == 0) {
+            претензия(уровень, позиция);
+        }
 
         for (Direction d : линия.sides()) {
             if (CAPACITY - линия.stored() <= 0) {
