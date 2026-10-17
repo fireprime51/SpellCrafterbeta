@@ -25,6 +25,10 @@ logs/
 out/
 bin/
 
+# Python
+__pycache__/
+*.pyc
+
 # Служебное окружение агента
 .opencode/
 .vecta/
