@@ -57,27 +57,11 @@ public abstract class NetworkItem extends BlockItem {
             return addable(уровень, контекст) || new BlockPlaceContext(контекст).canPlace()
                     ? InteractionResult.SUCCESS : InteractionResult.PASS;
         }
-        traceClick(контекст);
         if (addInto(уровень, контекст)) {
             return InteractionResult.CONSUME;
         }
         return placeWithLine(контекст);
     }
-
-    /** След клика: раз в секунду, чтобы по логу было видно, доходит ли он. */
-    private void traceClick(UseOnContext контекст) {
-        long сейчас = System.currentTimeMillis();
-        if (сейчас - последнийКлик < 1000) {
-            return;
-        }
-        последнийКлик = сейчас;
-        var под = контекст.getLevel().getBlockState(контекст.getClickedPos()).getBlock();
-        Spellcraft.LOGGER.info("Сеть: клик {} по {} в {}",
-                NetworkItems.id(new NetworkLine(kind, color, 0, 0)), под,
-                контекст.getClickedPos());
-    }
-
-    private static long последнийКлик;
 
     /**
      * Установка нового блока сети сразу с линией.
@@ -130,8 +114,6 @@ public abstract class NetworkItem extends BlockItem {
         уровень.playSound(null, позиция,
                 net.minecraft.sounds.SoundEvents.AMETHYST_BLOCK_CHIME,
                 net.minecraft.sounds.SoundSource.BLOCKS, 0.4f, 1.4f);
-        Spellcraft.LOGGER.info("Сеть: {} в {} — линий в блоке: {}",
-                NetworkItems.id(new NetworkLine(kind, color, 0, 0)), позиция, сеть.lines().size());
         var игрок = контекст.getPlayer();
         if (игрок == null || !игрок.getAbilities().instabuild) {
             контекст.getItemInHand().shrink(1);
@@ -187,9 +169,6 @@ public abstract class NetworkItem extends BlockItem {
             }
             NetworkBlockEntity.refresh(уровень, позиция);
             сеть.sync(уровень, позиция);
-            Spellcraft.LOGGER.info("Сеть: доклал {} в {} — линий в блоке: {}",
-                    NetworkItems.id(new NetworkLine(kind, color, 0, 0)), позиция,
-                    сеть.lines().size());
         }
         return true;
     }

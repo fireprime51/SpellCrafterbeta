@@ -1,5 +1,6 @@
 package com.github.fireprime5.spellcraft.network;
 
+import com.github.fireprime5.spellcraft.Spellcraft;
 import com.github.fireprime5.spellcraft.fluid.AbyssPort;
 import com.github.fireprime5.spellcraft.registry.ModBlocks;
 import net.minecraft.core.BlockPos;
@@ -43,6 +44,9 @@ import java.util.List;
  * линии, что и сервер.
  */
 public class NetworkBlockEntity extends BlockEntity {
+
+    /** Ключ списка линий в NBT. */
+    private static final String LINES = "lines";
 
     /** Линии блока: правило «сколько их может быть» живёт в {@link NetworkLines}. */
     private final NetworkLines lines = new NetworkLines();
@@ -415,7 +419,14 @@ public class NetworkBlockEntity extends BlockEntity {
      * нечего знать про то, как линия лежит в NBT.
      */
     private void load(CompoundTag tag) {
+        int было = tag.getList(LINES, Tag.TAG_COMPOUND).size();
         lines.load(tag);
+        if (было > NetworkGeometry.SLOTS) {
+            // блок вмещает три линии, а пришло больше: файл битый или его правили
+            // руками. Молча обрезать нельзя — потом не понять, куда делась линия
+            Spellcraft.LOGGER.warn("Сеть: в {} пришло {} линий, а слотов {}",
+                    getBlockPos(), было, NetworkGeometry.SLOTS);
+        }
         setChanged();
     }
 

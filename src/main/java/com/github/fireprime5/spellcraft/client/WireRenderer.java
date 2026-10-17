@@ -13,7 +13,6 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.DyeColor;
 
@@ -60,15 +59,15 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
     public void render(NetworkBlockEntity сеть, float partialTick, PoseStack pose,
                        MultiBufferSource buffer, int light, int overlay) {
         if (сеть.isEmpty()) {
-            trace("пустой блок", сеть, 0);
             return;
         }
         Mesh меш = mesh(сеть);
         if (меш == null || меш.isEmpty()) {
-            trace("меш пуст", сеть, 0);
+            // линии в блоке есть, а рисовать нечего: это поломка, и она молча
+            // выглядит как «провод не рисуется»
+            warn("в блоке с линиями собрался пустой меш");
             return;
         }
-        trace("линии на месте", сеть, меш.квадро.size());
         VertexConsumer consumer = buffer.getBuffer(RenderType.cutout());
         pose.pushPose();
         try {
@@ -120,10 +119,6 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 box(меш, отрезок, uv, линия.color());
             }
         }
-        // границы ловят и масштаб, и сдвиг: по логу видно, где на самом деле
-        // лежит меш, не дожидаясь картинки на экране
-        Spellcraft.LOGGER.info("Сеть: собрал меш на {} линий — {}",
-                линии.size(), меш.bounds());
         return меш;
     }
 
@@ -183,30 +178,6 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 (argb & 0xFF) / 255f, 1f};
     }
 
-    /**
-     * След рендера: раз в пять секунд.
-     *
-     * <p>Пока линии не видны, по логу надо отличать «рендерер не рисует» от
-     * «на клиенте в блоке нет линий»: снаружи это одно и то же пустое место.
-     */
-    private static void trace(String что, NetworkBlockEntity сеть, int квадро) {
-        long сейчас = System.currentTimeMillis();
-        // троттлинг по позиции, а не на весь клиент: иначе из трёх сетей рядом
-        // видно одну, и «пустой блок» заглушает «линии на месте»
-        if (следы.size() > 256) {
-            следы.clear();
-        }
-        Long прошлый = следы.get(сеть.getBlockPos());
-        if (прошлый != null && сейчас - прошлый < 5000) {
-            return;
-        }
-        следы.put(сеть.getBlockPos(), сейчас);
-        Spellcraft.LOGGER.info("Сеть: {} в {} — линий {}, квадро {}",
-                что, сеть.getBlockPos(), сеть.lines().size(), квадро);
-    }
-
-    private static final Map<BlockPos, Long> следы = new HashMap<>();
-
     /** Готовый меш: список квадро, которые осталось вывести. */
     private static final class Mesh {
         private final List<Квадро> квадро = new java.util.ArrayList<>();
@@ -231,24 +202,6 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
             return квадро.isEmpty();
         }
 
-        /** Границы меша в модельных координатах. */
-        String bounds() {
-            if (квадро.isEmpty()) {
-                return "пусто";
-            }
-            float[] min = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE};
-            float[] max = {-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
-            for (Квадро q : квадро) {
-                for (float[] вершина : q.вершины()) {
-                    for (int ось = 0; ось < 3; ось++) {
-                        min[ось] = Math.min(min[ось], вершина[ось]);
-                        max[ось] = Math.max(max[ось], вершина[ось]);
-                    }
-                }
-            }
-            return String.format("x %.3f..%.3f  y %.3f..%.3f  z %.3f..%.3f",
-                    min[0], max[0], min[1], max[1], min[2], max[2]);
-        }
     }
 
     /** Один квадро: четыре вершины с UV, нормаль и цвет. */
