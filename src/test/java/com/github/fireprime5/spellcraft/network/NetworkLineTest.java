@@ -242,6 +242,39 @@ class NetworkLineTest {
                 "труба бездны не должна хранить цвет");
     }
 
+    /**
+     * У каждой грани одна постоянная координата.
+     *
+     * <p>Так было не так: у нижней грани две вершины стояли на нижней плоскости
+     * и две — на верхней. Такая «грань» не рисуется вообще, и снаружи это
+     * выглядит как невидимый провод: блок есть, линии есть, а на экране пусто.
+     */
+    @Test
+    void граниПлоские() {
+        for (int slot = 0; slot < NetworkGeometry.SLOTS; slot++) {
+            for (NetworkGeometry.Segment отрезок
+                    : NetworkGeometry.segments(slot, Set.of())) {
+                List<NetworkGeometry.Face> грани = NetworkGeometry.faces(отрезок);
+                assertEquals(6, грани.size(),
+                        "у коробки шесть граней, а не " + грани.size());
+                for (NetworkGeometry.Face грань : грани) {
+                    int ось = грань.axis();
+                    for (double[] вершина : грань.вершины()) {
+                        assertEquals(грань.значение(), вершина[ось], 0.001,
+                                "грань по оси " + ось + " должна лежать на одной "
+                                        + "плоскости, а вершины разошлись: "
+                                        + java.util.Arrays.toString(вершина));
+                    }
+                    // нормаль смотрит наружу коробки
+                    float[] нормаль = {грань.nx(), грань.ny(), грань.nz()};
+                    assertTrue(Math.abs(нормаль[ось]) == 1f,
+                            "нормаль грани должна быть по её оси, а не "
+                                    + java.util.Arrays.toString(нормаль));
+                }
+            }
+        }
+    }
+
     private static int общих(boolean[] a, boolean[] b) {
         int всего = 0;
         for (int i = 0; i < a.length; i++) {

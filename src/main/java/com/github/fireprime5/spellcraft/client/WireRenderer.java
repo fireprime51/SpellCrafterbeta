@@ -145,39 +145,28 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
     }
 
     /**
-     * Коробка отрезка: шесть граней, у каждой четыре вершины.
+     * Коробка отрезка: шесть граней из {@link NetworkGeometry#faces}.
      *
-     * <p>Грань кладётся в обе стороны обхода. Minecraft отсекает задние грани, а
-     * порядок обхода у программного рендера ничем не задан и легко перепутать с
-     * ванильным: линия в мире просто не видна, и нигде не сказано почему.
-     * Лишняя грань отсечётся сама, а вот правильная нарисуется при любом из двух
-     * порядков.
+     * <p>Грани строит правило, а не рендерер: перекошенная грань с двумя разными
+     * значениями одной оси не рисуется вообще и выглядит как «провод невидим».
+     * Такую ошибку можно проверить тестом, а код рендерера — только в игре.
+     *
+     * <p>У каждой грани оба обхода вершин: задние грани отсекаются, а порядок
+     * обхода у программного рендера ничем не задан. Лишний отсечётся сам.
      */
     private void box(Mesh меш, NetworkGeometry.Segment отрезок, UV uv, DyeColor цвет) {
-        float x1 = (float) отрезок.x1() / 16f;
-        float y1 = (float) отрезок.y1() / 16f;
-        float z1 = (float) отрезок.z1() / 16f;
-        float x2 = (float) отрезок.x2() / 16f;
-        float y2 = (float) отрезок.y2() / 16f;
-        float z2 = (float) отрезок.z2() / 16f;
-        if (x1 >= x2 || y1 >= y2 || z1 >= z2) {
-            return;
-        }
         float[] tint = цвет(цвет);
-        // нижняя и верхняя
-        face(меш, uv, tint, v(x1, y1, z1), v(x2, y1, z2), v(x2, y2, z2), v(x1, y2, z1), 0, -1, 0);
-        face(меш, uv, tint, v(x1, y2, z2), v(x2, y2, z2), v(x2, y2, z1), v(x1, y2, z1), 0, 1, 0);
-        // север и юг
-        face(меш, uv, tint, v(x1, y2, z1), v(x2, y2, z1), v(x2, y1, z1), v(x1, y1, z1), 0, 0, -1);
-        face(меш, uv, tint, v(x1, y1, z2), v(x2, y1, z2), v(x2, y2, z2), v(x1, y2, z2), 0, 0, 1);
-        // запад и восток
-        face(меш, uv, tint, v(x1, y1, z1), v(x1, y1, z2), v(x1, y2, z2), v(x1, y2, z1), -1, 0, 0);
-        face(меш, uv, tint, v(x2, y1, z2), v(x2, y1, z1), v(x2, y2, z1), v(x2, y2, z2), 1, 0, 0);
-    }
-
-    /** Вершина квадро. */
-    private static float[] v(float x, float y, float z) {
-        return new float[]{x, y, z};
+        for (NetworkGeometry.Face грань : NetworkGeometry.faces(отрезок)) {
+            float[][] вершины = new float[4][3];
+            for (int i = 0; i < 4; i++) {
+                for (int ось = 0; ось < 3; ось++) {
+                    вершины[i][ось] = (float) (грань.вершины()[i][ось] / 16f);
+                }
+            }
+            меш.add(uv, tint, вершины, грань.nx(), грань.ny(), грань.nz());
+            float[][] обратный = {вершины[0], вершины[3], вершины[2], вершины[1]};
+            меш.add(uv, tint, обратный, грань.nx(), грань.ny(), грань.nz());
+        }
     }
 
     private static float[] цвет(DyeColor цвет) {
@@ -186,62 +175,11 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 (argb & 0xFF) / 255f, 1f};
     }
 
-    /** Одна грань: четыре вершины по порядку обхода и её обратный порядок. */
-    private void face(Mesh меш, UV uv, float[] цвет, float[] a, float[] b, float[] c,
-                     float[] d, float nx, float ny, float nz) {
-        меш.add(uv, цвет, a, b, c, d, nx, ny, nz);
-        меш.add(uv, цвет, a, d, c, b, nx, ny, nz);
-    }
-
-    /** Готовый меш: список квадро, которые осталось вывести. */
-    private static final class Mesh {
-        private final List<Квадро> квадро = new java.util.ArrayList<>();
-        private boolean warned;
-
-        void add(UV uv, float[] цвет, float[] a, float[] b, float[] c, float[] d,
-                 float nx, float ny, float nz) {
-            if (!warned && !Float.isFinite(a[0] + b[1] + c[2])) {
-                warned = true;
-                WireRenderer.warn("в линию попала нечисловая вершина");
-                return;
-            }
-            квадро.add(new Квадро(uv, цвет, a, b, c, d, nx, ny, nz));
-        }
-
-        boolean isEmpty() {
-            return квадро.isEmpty();
-        }
-    }
-
-    /** Один квадро: четыре вершины, нормаль, цвет и UV. */
-    private record Квадро(UV uv, float[] цвет, float[] a, float[] b, float[] c, float[] d,
-                          float nx, float ny, float nz) {
-
-        void write(VertexConsumer consumer, PoseStack.Pose pose, int light, int overlay) {
-            вершина(consumer, pose, a, nx, ny, nz, light, overlay);
-            вершина(consumer, pose, b, nx, ny, nz, light, overlay);
-            вершина(consumer, pose, c, nx, ny, nz, light, overlay);
-            вершина(consumer, pose, d, nx, ny, nz, light, overlay);
-        }
-
-        private void вершина(VertexConsumer consumer, PoseStack.Pose pose, float[] p,
-                             float nx, float ny, float nz, int light, int overlay) {
-            consumer.addVertex(pose.pose(), p[0], p[1], p[2])
-                    .setColor(цвет[0], цвет[1], цвет[2], цвет[3])
-                    .setUv(uv.u0(), uv.v0())
-                    .setOverlay(overlay)
-                    .setLight(light)
-                    .setNormal(pose, nx, ny, nz);
-        }
-    }
-
     /**
-     * След рендера: раз в пять секунд, чтобы по логу было видно, доходит ли
-     * дело до отрисовки и с чем именно.
+     * След рендера: раз в пять секунд.
      *
-     * <p>Пока линии не видны, а в логе нет ни слова, разобраться не в чем:
-     * рендерер мог не вызваться вовсе, а мог получить блок без линий. Оба случая
-     * выглядят снаружи одинаково — пустое место в мире.
+     * <p>Пока линии не видны, по логу надо отличать «рендерер не рисует» от
+     * «на клиенте в блоке нет линий»: снаружи это одно и то же пустое место.
      */
     private static void trace(String что, NetworkBlockEntity сеть, int квадро) {
         long сейчас = System.currentTimeMillis();
@@ -254,6 +192,47 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
     }
 
     private static long последнийСлед;
+
+    /** Готовый меш: список квадро, которые осталось вывести. */
+    private static final class Mesh {
+        private final List<Квадро> квадро = new java.util.ArrayList<>();
+
+        void add(UV uv, float[] цвет, float[][] вершины, float nx, float ny, float nz) {
+            for (float[] вершина : вершины) {
+                for (float координата : вершина) {
+                    if (!Float.isFinite(координата)) {
+                        WireRenderer.warn("в линию попала нечисловая вершина");
+                        return;
+                    }
+                }
+            }
+            // UV раскладывается по четырём углам грани: одинаковая UV на всех
+            // вершинах схлопывает текстуру в один пиксель
+            float[][] uvКоординаты = {{uv.u0(), uv.v0()}, {uv.u1(), uv.v0()},
+                    {uv.u1(), uv.v1()}, {uv.u0(), uv.v1()}};
+            квадро.add(new Квадро(uvКоординаты, цвет, вершины, nx, ny, nz));
+        }
+
+        boolean isEmpty() {
+            return квадро.isEmpty();
+        }
+    }
+
+    /** Один квадро: четыре вершины с UV, нормаль и цвет. */
+    private record Квадро(float[][] uv, float[] цвет, float[][] вершины,
+                          float nx, float ny, float nz) {
+
+        void write(VertexConsumer consumer, PoseStack.Pose pose, int light, int overlay) {
+            for (int i = 0; i < 4; i++) {
+                consumer.addVertex(pose.pose(), вершины[i][0], вершины[i][1], вершины[i][2])
+                        .setColor(цвет[0], цвет[1], цвет[2], цвет[3])
+                        .setUv(uv[i][0], uv[i][1])
+                        .setOverlay(overlay)
+                        .setLight(light)
+                        .setNormal(pose, nx, ny, nz);
+            }
+        }
+    }
 
     /** Предупреждение о том, что блок не нарисуется, — один раз на причину. */
     private static void warn(String причина) {
