@@ -148,6 +148,11 @@ public class NetworkBlockEntity extends BlockEntity {
         setChanged();
         level.sendBlockUpdated(pos, getBlockState(), getBlockState(),
                 net.minecraft.world.level.block.Block.UPDATE_ALL);
+        // форма блока — это линии, а Minecraft кэширует её и раздаёт соседям
+        // только по событиям блока. Без этого пересчёта клик по отросшему концу
+        // линии не попадал бы в блок, и hitSlot отдавал бы -1
+        getBlockState().updateNeighbourShapes(level, pos,
+                net.minecraft.world.level.block.Block.UPDATE_ALL);
     }
 
     /** Пересчитать подключения этого блока по соседям. */
@@ -183,8 +188,13 @@ public class NetworkBlockEntity extends BlockEntity {
             if (!(level.getBlockEntity(сосед) instanceof NetworkBlockEntity be)) {
                 return false;
             }
-            NetworkLine рядом = be.line(kind, color);
-            return рядом != null && рядом.connected(d.getOpposite());
+            // только наличие такой же линии у соседа. Прежняя проверка «а он уже
+            // смотрит сюда?» глушила сеть с обеих сторон: первый блок про второй
+            // ещё не знает, второй смотрит на первого и видит у него маску 0 — и
+            // никто не делает шаг первым, два соседних провода не соединяются
+            // никогда. Наличие линии и задаёт тождество сети, а симметрия
+            // получается сама, когда сосед пересчитается
+            return be.line(kind, color) != null;
         }
         if (kind == LineKind.ENERGY) {
             return блок instanceof NetworkNode;

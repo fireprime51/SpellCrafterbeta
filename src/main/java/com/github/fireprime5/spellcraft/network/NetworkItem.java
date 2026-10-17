@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.item.DyeColor;
 import com.github.fireprime5.spellcraft.Spellcraft;
@@ -53,7 +54,7 @@ public abstract class NetworkItem extends BlockItem {
         if (уровень.isClientSide) {
             // клиент только спрашивает: класть линию будет сервер, а клиентская
             // правка блок-сущности всё равно затёрлась бы его ответом
-            return addable(уровень, контекст) || canPlace(уровень, контекст)
+            return addable(уровень, контекст) || new BlockPlaceContext(контекст).canPlace()
                     ? InteractionResult.SUCCESS : InteractionResult.PASS;
         }
         traceClick(контекст);
@@ -87,14 +88,21 @@ public abstract class NetworkItem extends BlockItem {
      * было ни кликнуть, ни поставить рядом другой блок: место выглядело занятым,
      * но пустым, и игрок решал, что провод не ставится вовсе.
      *
+     * <p>Позиция берётся из {@link BlockPlaceContext}, а не из клика напрямую.
+     * Клик по траве — это клик по блоку, который не заменяется, и ванилль ставит
+     * блок <b>над</b> ним. Собственная проверка «а можно ли сюда» смотрела на
+     * саму траву, всегда получала «нельзя» и отдавала установку ванилльному
+     * пути: блок вставал обычным BlockItem, без линии, пустой и навсегда.
+     *
      * @return CONSUME, если блок поставлен, иначе — обычная установка
      */
     private InteractionResult placeWithLine(UseOnContext контекст) {
         Level уровень = контекст.getLevel();
-        BlockPos позиция = контекст.getClickedPos();
-        if (!canPlace(уровень, контекст)) {
+        BlockPlaceContext место = new BlockPlaceContext(контекст);
+        if (!место.canPlace()) {
             return super.useOn(контекст);
         }
+        BlockPos позиция = место.getClickedPos();
         уровень.setBlock(позиция, ModBlocks.WIRE.get().defaultBlockState(),
                 net.minecraft.world.level.block.Block.UPDATE_ALL);
         if (!(уровень.getBlockEntity(позиция) instanceof NetworkBlockEntity сеть)) {
@@ -106,7 +114,14 @@ public abstract class NetworkItem extends BlockItem {
                     позиция);
             return super.useOn(контекст);
         }
-        сеть.add(kind, color);
+        if (!сеть.add(kind, color)) {
+            // блок без линии — пустой призрак: он держит место и ничего не
+            // рисует, и игрок ищет, где ошибка
+            уровень.removeBlock(позиция, false);
+            Spellcraft.LOGGER.warn("Сеть: в {} некуда класть линию {}",
+                    позиция, NetworkItems.id(new NetworkLine(kind, color, 0, 0)));
+            return InteractionResult.PASS;
+        }
         // синхронизация нужна и без единого подключения: клиент по блоку сможет
         // нарисовать линию и кликнуть по ней
         сеть.sync(уровень, позиция);
@@ -124,27 +139,25 @@ public abstract class NetworkItem extends BlockItem {
         return InteractionResult.CONSUME;
     }
 
-    /** Можно ли поставить блок сети в эту позицию. */
-    private boolean canPlace(Level уровень, UseOnContext контекст) {
-        BlockPos позиция = контекст.getClickedPos();
-        return уровень.isInWorldBounds(позиция)
-                && уровень.getBlockState(позиция).canBeReplaced();
-    }
-
     /** Можно ли добавить линию: блок сети под курсором и в нём есть место. */
     private boolean addable(Level уровень, UseOnContext контекст) {
         NetworkBlockEntity сеть = сетьПод(уровень, контекст.getClickedPos(), контекст);
         return сеть != null && сеть.hasFreeSlot() && сеть.line(kind, color) == null;
     }
 
-    /** Блок сети под курсором: сам блок или тот, что стоит за кликнутой гранью. */
+    /**
+     * Блок сети под курсором: сам блок или тот, что стоит перед кликнутой гранью.
+     *
+     * <p>Именно перед гранью, а не за ней: за кликнутой гранью лежит сам кликнутый
+     * блок, и поиск там всегда упирался бы в него самого.
+     */
     private NetworkBlockEntity сетьПод(Level уровень, net.minecraft.core.BlockPos позиция,
                                      UseOnContext контекст) {
         if (уровень.getBlockEntity(позиция) instanceof NetworkBlockEntity be) {
             return be;
         }
-        var рядом = позиция.relative(контекст.getClickedFace().getOpposite());
-        return уровень.getBlockEntity(рядом) instanceof NetworkBlockEntity be ? be : null;
+        var перед = позиция.relative(контекст.getClickedFace());
+        return уровень.getBlockEntity(перед) instanceof NetworkBlockEntity be ? be : null;
     }
 
     /**

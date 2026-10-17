@@ -275,6 +275,53 @@ class NetworkLineTest {
         }
     }
 
+    /**
+     * У каждой грани есть площадь, и обход вершин идёт по периметру.
+     *
+     * <p>Проверка на глаз по «плоской грани» тут не годилась: грань нулевой
+     * площади тоже плоская, все её вершины лежат на одной плоскости. Четыре грани
+     * из шести были схлопнуты в линию — по постоянной координате это не видно.
+     *
+     * <p>Знак площади по шнуровке проверяется вместе с нормалью: обход «бант» с
+     * диагоналями вместо сторон даёт треугольники противоположной ориентации, и
+     * при отсечении задних граней половина грани не рисуется.
+     */
+    @Test
+    void граниНеВырождены() {
+        List<NetworkGeometry.Segment> отрезки = List.of(
+                new NetworkGeometry.Segment(5, 5, 5, 7, 7, 7),
+                new NetworkGeometry.Segment(5, 5, 5, 16, 7, 7),
+                new NetworkGeometry.Segment(0, 5, 5, 7, 7, 7),
+                new NetworkGeometry.Segment(5, 5, 5, 7, 16, 7),
+                new NetworkGeometry.Segment(5, 0, 5, 7, 7, 7),
+                new NetworkGeometry.Segment(5, 5, 5, 7, 7, 16),
+                new NetworkGeometry.Segment(5, 5, 0, 7, 7, 7));
+        for (NetworkGeometry.Segment отрезок : отрезки) {
+            List<NetworkGeometry.Face> грани = NetworkGeometry.faces(отрезок);
+            assertEquals(6, грани.size(), "у коробки шесть граней");
+            for (NetworkGeometry.Face грань : грани) {
+                int ось = грань.axis();
+                int u = ось == 0 ? 1 : 0;
+                int v = ось == 2 ? 1 : 2;
+                double площадь = 0;
+                for (int i = 0; i < 4; i++) {
+                    double[] p = грань.вершины()[i];
+                    double[] q = грань.вершины()[(i + 1) % 4];
+                    площадь += p[u] * q[v] - q[u] * p[v];
+                }
+                assertTrue(Math.abs(площадь) > 1e-6,
+                        "грань оси " + ось + " на " + грань.значение()
+                                + " схлопнулась в линию: площадь " + площадь);
+                float[] нормаль = {грань.nx(), грань.ny(), грань.nz()};
+                int знак = (int) Math.signum(площадь) * (ось == 1 ? -1 : 1);
+                assertTrue(знак == Math.signum(нормаль[ось]),
+                        "обход вершин не совпадает с нормалью: площадь " + площадь
+                                + " при нормали " + java.util.Arrays.toString(нормаль)
+                                + " — такую грань отсечёт по обратной стороне");
+            }
+        }
+    }
+
     private static int общих(boolean[] a, boolean[] b) {
         int всего = 0;
         for (int i = 0; i < a.length; i++) {

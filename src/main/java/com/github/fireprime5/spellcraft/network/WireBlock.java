@@ -90,7 +90,9 @@ public class WireBlock extends BaseEntityBlock implements NetworkNode {
     @Override
     protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState,
                            boolean movedByPiston) {
-        if (!state.is(oldState.getBlock())) {
+        // пересчёт подключений читает соседей, а на клиенте их блок-сущности в
+        // этот момент ещё пусты: маски обнулились бы и поехали в пакет
+        if (!level.isClientSide && !state.is(oldState.getBlock())) {
             NetworkBlockEntity.refresh(level, pos);
         }
     }
@@ -105,7 +107,7 @@ public class WireBlock extends BaseEntityBlock implements NetworkNode {
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState,
                             boolean movedByPiston) {
-        if (!state.is(newState.getBlock())) {
+        if (!level.isClientSide && !state.is(newState.getBlock())) {
             NetworkBlockEntity.refresh(level, pos);
             if (!movedByPiston && level.getBlockEntity(pos) instanceof NetworkBlockEntity сеть) {
                 dropLines(level, pos, сеть);
@@ -180,11 +182,12 @@ public class WireBlock extends BaseEntityBlock implements NetworkNode {
                 || !(level.getBlockEntity(pos) instanceof NetworkBlockEntity сеть)) {
             return InteractionResult.PASS;
         }
-        NetworkLine линия = сеть.hit(точкаВБлоке(hit, pos));
+        net.minecraft.world.phys.Vec3 точка = точкаВБлоке(hit, pos);
+        NetworkLine линия = сеть.hit(точка);
         if (линия == null) {
             return InteractionResult.PASS;
         }
-        int slot = сеть.hitSlot(точкаВБлоке(hit, pos));
+        int slot = сеть.hitSlot(точка);
         сеть.remove(slot);
         if (сеть.isEmpty()) {
             level.destroyBlock(pos, false);
