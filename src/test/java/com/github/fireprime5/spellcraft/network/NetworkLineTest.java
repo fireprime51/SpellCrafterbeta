@@ -533,4 +533,65 @@ class NetworkLineTest {
         assertEquals(1, линии.slot(LineKind.ABYSS, DyeColor.WHITE),
                 "оставшаяся линия не переезжает на освободившийся слот сама");
     }
+
+    /**
+     * Перенос в последний слот, когда список короче трёх.
+     *
+     * <p>Ровно этот случай вылетел в игре: в блоке стояли красная и синяя, зелёный
+     * провод клался в третий слот, список дорастал до двух элементов, и запись в
+     * третий падала с выходом за границу — на сервере, в обработчике клика.
+     */
+    @Test
+    void переносВПоследнийСлот() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        assertTrue(линии.move(1, 2), "список должен дорасти до третьего слота");
+        assertEquals(DyeColor.BLUE, линии.line(2).color());
+        assertEquals(3, линии.size());
+        assertEquals(2, линии.count(), "обе линии на месте: синяя просто ушла в третий слот");
+        assertEquals(DyeColor.RED, линии.line(0).color(), "красная не тронута");
+        assertNull(линии.line(1), "прежний слот синей освободился");
+    }
+
+    /**
+     * Добавление в последний слот после снятия первой линии.
+     *
+     * <p>Тот же выход за границу, только на пустом месте: блок из двух линий в
+     * слотах 1 и 2 и добавление третьей в слот 0.
+     */
+    @Test
+    void добавлениеВСвободныйСлотПослеСнятия() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.add(LineKind.ENERGY, DyeColor.GREEN);
+        линии.remove(0);
+        assertTrue(линии.add(LineKind.ENERGY, DyeColor.LIME));
+        assertEquals(DyeColor.LIME, линии.line(0).color());
+        assertEquals(3, линии.count(), "третья линия влезла в освободившийся слот");
+    }
+
+    /**
+     * Обход по слотам переживает перенос линии.
+     *
+     * <p>Пересчёт подключений идёт по слотам и переносит линии прямо по ходу
+     * обхода. Обход по самому списку в этот момент отставал бы или падал бы с
+     * ConcurrentModificationException — список меняется структурно.
+     */
+    @Test
+    void переносВоВремяОбходаНеЛомаетСписок() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        for (int slot = 0; slot < NetworkGeometry.SLOTS; slot++) {
+            NetworkLine линия = линии.line(slot);
+            if (линия != null && линия.color() == DyeColor.RED) {
+                линии.move(slot, 2);
+            }
+        }
+        assertEquals(DyeColor.RED, линии.line(2).color());
+        assertEquals(DyeColor.BLUE, линии.line(1).color(), "синяя осталась на месте");
+        assertEquals(2, линии.count());
+    }
 }

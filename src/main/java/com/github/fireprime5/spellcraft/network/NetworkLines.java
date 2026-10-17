@@ -72,6 +72,19 @@ public final class NetworkLines {
         return count() < NetworkGeometry.SLOTS;
     }
 
+    /**
+     * Дорастить список так, чтобы слот стал последним элементом.
+     *
+     * <p>Строго до {@code slot + 1}: вариант «пока размер меньше слота» оставлял
+     * список на элемент короче, и запись в последний слот падала с выходом за
+     * границу. Ровно этот случай и вылетел в игре — перенос линии в третий слот.
+     */
+    private void grow(int slot) {
+        while (lines.size() <= slot) {
+            lines.add(null);
+        }
+    }
+
     /** Номер слота линии такого вида и цвета или -1. */
     public int slot(LineKind kind, DyeColor color) {
         for (int slot = 0; slot < lines.size(); slot++) {
@@ -100,9 +113,7 @@ public final class NetworkLines {
             return false;
         }
         NetworkLine линия = lines.get(from);
-        while (lines.size() < to) {
-            lines.add(null);
-        }
+        grow(to);
         lines.set(to, линия);
         lines.set(from, null);
         trim();
@@ -170,14 +181,8 @@ public final class NetworkLines {
             return false;
         }
         int slot = freeSlot();
-        while (lines.size() < slot) {
-            lines.add(null);
-        }
-        if (slot >= lines.size()) {
-            lines.add(NetworkLine.empty(kind, color));
-        } else {
-            lines.set(slot, NetworkLine.empty(kind, color));
-        }
+        grow(slot);
+        lines.set(slot, NetworkLine.empty(kind, color));
         return true;
     }
 

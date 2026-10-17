@@ -104,7 +104,7 @@ public class NetworkBlockEntity extends BlockEntity {
      */
     public IEnergyStorage energyStorage() {
         for (NetworkLine линия : lines.all()) {
-            if (линия.kind() == LineKind.ENERGY) {
+            if (линия != null && линия.kind() == LineKind.ENERGY) {
                 return линия;
             }
         }
@@ -197,7 +197,10 @@ public class NetworkBlockEntity extends BlockEntity {
                 if (!(level.getBlockEntity(сосед) instanceof NetworkBlockEntity be)) {
                     continue;
                 }
-                for (NetworkLine линия : lines.all()) {
+                // по слотам, а не по копии списка: перенос меняет список прямо
+                // сейчас, и обход по нему же отстал бы на шаг
+                for (int slot = 0; slot < NetworkGeometry.SLOTS; slot++) {
+                    NetworkLine линия = lines.line(slot);
                     if (линия == null) {
                         continue;
                     }
@@ -341,6 +344,9 @@ public class NetworkBlockEntity extends BlockEntity {
     /** Перенос по всем линиям блока за один тик. */
     public void work(Level level, BlockPos pos) {
         for (NetworkLine линия : lines.all()) {
+            if (линия == null) {
+                continue;
+            }
             if (линия.kind() == LineKind.ABYSS) {
                 NetworkEnergy.transferAbyss(level, pos, линия);
                 continue;

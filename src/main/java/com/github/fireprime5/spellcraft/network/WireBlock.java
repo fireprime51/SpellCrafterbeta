@@ -118,7 +118,9 @@ public class WireBlock extends BaseEntityBlock implements NetworkNode {
 
     private void dropLines(Level level, BlockPos pos, NetworkBlockEntity сеть) {
         for (NetworkLine линия : сеть.lines()) {
-            Block.popResource(level, pos, NetworkItems.stack(линия));
+            if (линия != null) {
+                Block.popResource(level, pos, NetworkItems.stack(линия));
+            }
         }
     }
 
