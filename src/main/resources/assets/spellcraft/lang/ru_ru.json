@@ -9,7 +9,7 @@
   "block.spellcraft.mana_vessel": "Сосуд энергии бездны",
   "block.spellcraft.portal": "Портал",
   "block.spellcraft.smelter": "Плавильня",
-  "block.spellcraft.wire": "Провод",
+  "block.spellcraft.wire": "Линия сети",
   "cast.analysis_self": "Ты уже нашёл то, что твоё",
   "cast.delay_bad": "Задержке нужны значение и положительное число тиков",
   "cast.delay_full": "Очередь отложенного переполнена",

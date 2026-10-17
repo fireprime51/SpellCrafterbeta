@@ -9,7 +9,7 @@
   "block.spellcraft.mana_vessel": "Abyss Energy Vessel",
   "block.spellcraft.portal": "Portal",
   "block.spellcraft.smelter": "Smelter",
-  "block.spellcraft.wire": "Wire",
+  "block.spellcraft.wire": "Network Line",
   "cast.analysis_self": "You have already found what is yours",
   "cast.delay_bad": "The delay needs a value and a positive number of ticks",
   "cast.delay_full": "The delay queue is full",
