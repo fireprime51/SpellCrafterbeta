@@ -56,11 +56,27 @@ public abstract class NetworkItem extends BlockItem {
             return addable(уровень, контекст) || canPlace(уровень, контекст)
                     ? InteractionResult.SUCCESS : InteractionResult.PASS;
         }
+        traceClick(контекст);
         if (addInto(уровень, контекст)) {
             return InteractionResult.CONSUME;
         }
         return placeWithLine(контекст);
     }
+
+    /** След клика: раз в секунду, чтобы по логу было видно, доходит ли он. */
+    private void traceClick(UseOnContext контекст) {
+        long сейчас = System.currentTimeMillis();
+        if (сейчас - последнийКлик < 1000) {
+            return;
+        }
+        последнийКлик = сейчас;
+        var под = контекст.getLevel().getBlockState(контекст.getClickedPos()).getBlock();
+        Spellcraft.LOGGER.info("Сеть: клик {} по {} в {}",
+                NetworkItems.id(new NetworkLine(kind, color, 0, 0)), под,
+                контекст.getClickedPos());
+    }
+
+    private static long последнийКлик;
 
     /**
      * Установка нового блока сети сразу с линией.
