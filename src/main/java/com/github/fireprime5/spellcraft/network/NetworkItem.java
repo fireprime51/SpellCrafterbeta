@@ -99,6 +99,8 @@ public abstract class NetworkItem extends BlockItem {
         уровень.playSound(null, позиция,
                 net.minecraft.sounds.SoundEvents.AMETHYST_BLOCK_CHIME,
                 net.minecraft.sounds.SoundSource.BLOCKS, 0.4f, 1.4f);
+        Spellcraft.LOGGER.info("Сеть: {} в {} — линий в блоке: {}",
+                NetworkItems.id(new NetworkLine(kind, color, 0, 0)), позиция, сеть.lines().size());
         var игрок = контекст.getPlayer();
         if (игрок == null || !игрок.getAbilities().instabuild) {
             контекст.getItemInHand().shrink(1);

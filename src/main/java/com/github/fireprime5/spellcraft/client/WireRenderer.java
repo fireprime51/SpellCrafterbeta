@@ -56,12 +56,14 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
     public void render(NetworkBlockEntity сеть, float partialTick, PoseStack pose,
                        MultiBufferSource buffer, int light, int overlay) {
         if (сеть.isEmpty()) {
+            trace("пустой блок", сеть, 0);
             return;
         }
         Mesh меш = mesh(сеть);
         if (меш == null || меш.isEmpty()) {
             return;
         }
+        trace("линии на месте", сеть, меш.квадро.size());
         VertexConsumer consumer = buffer.getBuffer(RenderType.cutout());
         pose.pushPose();
         try {
@@ -232,6 +234,26 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                     .setNormal(pose, nx, ny, nz);
         }
     }
+
+    /**
+     * След рендера: раз в пять секунд, чтобы по логу было видно, доходит ли
+     * дело до отрисовки и с чем именно.
+     *
+     * <p>Пока линии не видны, а в логе нет ни слова, разобраться не в чем:
+     * рендерер мог не вызваться вовсе, а мог получить блок без линий. Оба случая
+     * выглядят снаружи одинаково — пустое место в мире.
+     */
+    private static void trace(String что, NetworkBlockEntity сеть, int квадро) {
+        long сейчас = System.currentTimeMillis();
+        if (сейчас - последнийСлед < 5000) {
+            return;
+        }
+        последнийСлед = сейчас;
+        Spellcraft.LOGGER.info("Сеть: {} в {} — линий {}, квадро {}",
+                что, сеть.getBlockPos(), сеть.lines().size(), квадро);
+    }
+
+    private static long последнийСлед;
 
     /** Предупреждение о том, что блок не нарисуется, — один раз на причину. */
     private static void warn(String причина) {
