@@ -8,6 +8,9 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -20,6 +23,8 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -271,6 +276,34 @@ public class NetworkBlockEntity extends BlockEntity {
             список.add(линия.save(new CompoundTag()));
         }
         tag.put(LINES, список);
+    }
+
+    /**
+     * Данные для клиента при загрузке чанка.
+     *
+     * <p>В ванилле умолчание возвращает пустой тег. Клиент тогда получает блок
+     * вообще без линий и молча рисует пустоту, пока сервер считает, что линии
+     * есть: блок виден, линии на месте, а на экране ничего.
+     */
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        saveAdditional(tag, registries);
+        return tag;
+    }
+
+    /**
+     * Данные для клиента при точечном обновлении блока.
+     *
+     * <p>В ванилле умолчание возвращает {@code null}, и {@code ChunkHolder} не
+     * отправляет пакет вовсе: без этого метода {@code sendBlockUpdated} доставит
+     * клиенту только состояние блока, а блочные данные — никогда. Отсюда были
+     * «линий 0» на клиенте при полной сети на сервере.
+     */
+    @Nullable
+    @Override
+    public Packet<ClientGamePacketListener> getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
     }
 
     @Override

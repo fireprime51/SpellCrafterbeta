@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.DyeColor;
 
@@ -40,9 +41,12 @@ import java.util.Set;
  * 8/16, 11/16), поэтому в одну грань машины входят три линии разных цветов в трёх
  * разных точках и не пересекаются.
  *
- * <p>Координаты модельные, 0..1, и сдвигаются на полблока в мировые: блок в мире
- * занимает -0.5..0.5, а модельная система координат — 0..1. Тот же сдвиг делает
- * ваниль, когда рисует обычные блоки.
+ * <p>Координаты модельные, 0..1, и берутся как есть: у блочного рендерера начало
+ * координат — нижний угол блока, а не его центр. В этом можно убедиться по
+ * ванильным блочным рендерерам: {@code BeaconRenderer} сдвигается на
+ * {@code +0.5}, чтобы попасть в центр блока, а {@code ChestRenderer} не сдвигается
+ * вовсе. Лишний сдвиг на полблока уводил половину линии внутрь машины, а
+ * половину — в соседний блок.
  */
 public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
 
@@ -61,14 +65,13 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
         }
         Mesh меш = mesh(сеть);
         if (меш == null || меш.isEmpty()) {
+            trace("меш пуст", сеть, 0);
             return;
         }
         trace("линии на месте", сеть, меш.квадро.size());
         VertexConsumer consumer = buffer.getBuffer(RenderType.cutout());
         pose.pushPose();
         try {
-            // модельные 0..1 -> мировые -0.5..0.5
-            pose.translate(-0.5, -0.5, -0.5);
             for (Квадро quad : меш.квадро) {
                 quad.write(consumer, pose.last(), light, overlay);
             }
@@ -117,6 +120,10 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
                 box(меш, отрезок, uv, линия.color());
             }
         }
+        // границы ловят и масштаб, и сдвиг: по логу видно, где на самом деле
+        // лежит меш, не дожидаясь картинки на экране
+        Spellcraft.LOGGER.info("Сеть: собрал меш на {} линий — {}",
+                линии.size(), меш.bounds());
         return меш;
     }
 
@@ -183,15 +190,21 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
      */
     private static void trace(String что, NetworkBlockEntity сеть, int квадро) {
         long сейчас = System.currentTimeMillis();
-        if (сейчас - последнийСлед < 5000) {
+        // троттлинг по позиции, а не на весь клиент: иначе из трёх сетей рядом
+        // видно одну, и «пустой блок» заглушает «линии на месте»
+        if (следы.size() > 256) {
+            следы.clear();
+        }
+        Long прошлый = следы.get(сеть.getBlockPos());
+        if (прошлый != null && сейчас - прошлый < 5000) {
             return;
         }
-        последнийСлед = сейчас;
+        следы.put(сеть.getBlockPos(), сейчас);
         Spellcraft.LOGGER.info("Сеть: {} в {} — линий {}, квадро {}",
                 что, сеть.getBlockPos(), сеть.lines().size(), квадро);
     }
 
-    private static long последнийСлед;
+    private static final Map<BlockPos, Long> следы = new HashMap<>();
 
     /** Готовый меш: список квадро, которые осталось вывести. */
     private static final class Mesh {
@@ -215,6 +228,25 @@ public class WireRenderer implements BlockEntityRenderer<NetworkBlockEntity> {
 
         boolean isEmpty() {
             return квадро.isEmpty();
+        }
+
+        /** Границы меша в модельных координатах. */
+        String bounds() {
+            if (квадро.isEmpty()) {
+                return "пусто";
+            }
+            float[] min = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE};
+            float[] max = {-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+            for (Квадро q : квадро) {
+                for (float[] вершина : q.вершины()) {
+                    for (int ось = 0; ось < 3; ось++) {
+                        min[ось] = Math.min(min[ось], вершина[ось]);
+                        max[ось] = Math.max(max[ось], вершина[ось]);
+                    }
+                }
+            }
+            return String.format("x %.3f..%.3f  y %.3f..%.3f  z %.3f..%.3f",
+                    min[0], max[0], min[1], max[1], min[2], max[2]);
         }
     }
 
