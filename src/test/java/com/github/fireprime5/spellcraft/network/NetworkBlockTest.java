@@ -281,6 +281,15 @@ class NetworkBlockTest {
                         + "пустым, а не падать");
     }
 
+    /** Тело метода по имени сигнатуры: проверяется то, что внутри, а не рядом. */
+    private static String тело(String исходник, String сигнатура) {
+        int начало = исходник.indexOf(сигнатура);
+        assertTrue(начало >= 0, "в исходнике нет метода " + сигнатура);
+        int конец = исходник.indexOf("\n    }", начало);
+        assertTrue(конец > начало, "тело метода " + сигнатура + " не нашлось");
+        return исходник.substring(начало, конец);
+    }
+
     /**
      * Клиент должен получать состав линий, а не пустой блок.
      *
@@ -300,14 +309,20 @@ class NetworkBlockTest {
                 "без пакета с блочными данными клиент не получит линии вовсе: "
                         + "нужно переопределить getUpdatePacket, а не полагаться "
                         + "на умолчание ванилльности, которое возвращает null");
-        assertTrue(блок.contains("public CompoundTag getUpdateTag(HolderLookup.Provider registries)")
-                        && блок.contains("saveAdditional(tag, registries)"),
+        assertTrue(тело(блок, "public CompoundTag getUpdateTag(").contains("saveAdditional(tag, registries)"),
                 "при загрузке чанка клиент получает умолчание getUpdateTag — "
                         + "пустой тег; линии должны попадать в него явно");
-        // данные изменения блока должны и дальше уходить пакетом состояния
-        assertTrue(блок.contains("sendBlockUpdated"),
-                "без sendBlockUpdated позиция не попадёт в очередь на рассылку, "
+        // данные изменения блока должны уходить пакетом состояния, а иначе
+        // позиция не попадёт в очередь на рассылку и пакет с линиями не уйдёт
+        String sync = тело(блок, "public void sync(");
+        assertTrue(sync.contains("setChanged()") && sync.contains("sendBlockUpdated(")
+                        && !sync.contains("false"),
+                "sync должен и сохранять блок, и звать sendBlockUpdated: "
+                        + "иначе позиция не попадёт в очередь на рассылку, "
                         + "и пакет с линиями клиенту не уйдёт никогда");
+        assertTrue(тело(блок, "void reconnect(").contains("sync(level, pos)"),
+                "пересчёт подключений обязан дёргать ту же sync: иначе появление "
+                        + "нового соседа до клиента не дойдёт");
     }
 
     /**

@@ -161,9 +161,7 @@ public class NetworkBlockEntity extends BlockEntity {
             изменилось |= было != линия.mask();
         }
         if (изменилось) {
-            setChanged();
-            level.sendBlockUpdated(pos, getBlockState(), getBlockState(),
-                    net.minecraft.world.level.block.Block.UPDATE_ALL);
+            sync(level, pos);
         }
     }
 
