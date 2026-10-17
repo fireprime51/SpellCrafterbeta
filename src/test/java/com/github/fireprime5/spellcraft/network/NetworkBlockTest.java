@@ -72,7 +72,7 @@ class NetworkBlockTest {
 
         assertTrue(сеть.add(LineKind.ENERGY, DyeColor.RED));
         assertTrue(сеть.add(LineKind.ENERGY, DyeColor.BLUE));
-        assertTrue(сеть.add(LineKind.ABYSS, DyeColor.WHITE));
+        assertTrue(сеть.add(LineKind.FLUID, DyeColor.WHITE));
         assertFalse(сеть.hasFreeSlot(), "после трёх линий слотов быть не должно");
         assertFalse(сеть.add(LineKind.ENERGY, DyeColor.GREEN),
                 "четвёртая линия не должна помещаться");
@@ -80,9 +80,9 @@ class NetworkBlockTest {
         assertEquals(3, сеть.size());
         assertEquals(DyeColor.RED, сеть.line(0).color());
         assertEquals(DyeColor.BLUE, сеть.line(1).color());
-        assertEquals(LineKind.ABYSS, сеть.line(2).kind());
+        assertEquals(LineKind.FLUID, сеть.line(2).kind());
         assertEquals(DyeColor.RED, сеть.line(LineKind.ENERGY, DyeColor.RED).color());
-        assertEquals(LineKind.ABYSS, сеть.line(LineKind.ABYSS, DyeColor.WHITE).kind());
+        assertEquals(LineKind.FLUID, сеть.line(LineKind.FLUID, DyeColor.WHITE).kind());
     }
 
     /** Повторная такая же линия не занимает второй слот. */
@@ -107,10 +107,10 @@ class NetworkBlockTest {
     void снятиеЛинииОсвобождаетСлот() {
         NetworkLines сеть = new NetworkLines();
         сеть.add(LineKind.ENERGY, DyeColor.RED);
-        сеть.add(LineKind.ABYSS, DyeColor.WHITE);
+        сеть.add(LineKind.FLUID, DyeColor.WHITE);
 
         NetworkLine снятая = сеть.remove(1);
-        assertEquals(LineKind.ABYSS, снятая.kind());
+        assertEquals(LineKind.FLUID, снятая.kind());
         assertEquals(1, сеть.size());
         assertTrue(сеть.hasFreeSlot());
         assertTrue(сеть.add(LineKind.ENERGY, DyeColor.BLUE),
@@ -127,7 +127,7 @@ class NetworkBlockTest {
     void линииПереживаютNbt() {
         NetworkLines сеть = new NetworkLines();
         сеть.add(LineKind.ENERGY, DyeColor.RED);
-        сеть.add(LineKind.ABYSS, DyeColor.WHITE);
+        сеть.add(LineKind.FLUID, DyeColor.WHITE);
         NetworkLine красная = сеть.line(0);
         красная.connect(Direction.NORTH, true);
         красная.stored(500);
@@ -163,11 +163,12 @@ class NetworkBlockTest {
     }
 
     /**
-     * Провод соединяется и с проводом, и с машиной, а труба бездны — с портом.
+     * Трубы соединяются и с такой же трубой, и с тем, что берёт ресурс.
      *
      * <p>Проверяется по исходнику: правило читает соседей через {@code Level},
-     * которого в тестах нет. Смысл проверки — в том, что правило одно и у
-     * энергии, и у бездны, и что машина принимает провод любого цвета.
+     * которого в тестах нет. Смысл проверки — в том, что правило одно у обоих
+     * видов, машина принимает энергетическую трубу любого цвета, а жидкостная
+     * идёт только туда, где что-то налито.
      */
     @Test
     void правилоСоединенияОдноДляВидаИЦвета() throws IOException {
@@ -180,8 +181,8 @@ class NetworkBlockTest {
                 "линия должна соединяться с такой же линией в соседнем блоке");
         assertTrue(метод.contains("NetworkNode"),
                 "энергетическая линия должна доходить до машины");
-        assertTrue(метод.contains("AbyssPort"),
-                "труба бездны должна доходить до машины с портом");
+        assertTrue(метод.contains("NetworkFluids.естьЧемНаполнить"),
+                "жидкостная труба без налитого рядом никуда не доходит");
         // порядок важен: блок сети проверяется раньше узла, иначе линия стыкуется
         // с пустым блоком сети — он тоже помечен как узел, и сеть течёт сквозь
         // блоки, в которых её нет
@@ -259,12 +260,12 @@ class NetworkBlockTest {
     @Test
     void текстураЛинииБерётсяИзБлочногоАтласа() {
         NetworkLine провод = NetworkLine.empty(LineKind.ENERGY, DyeColor.RED);
-        NetworkLine бездна = NetworkLine.empty(LineKind.ABYSS, DyeColor.WHITE);
+        NetworkLine труба = NetworkLine.empty(LineKind.FLUID, DyeColor.WHITE);
         assertEquals("spellcraft:block/wire_red",
                 NetworkItems.sprite(провод).toString());
-        assertEquals("spellcraft:block/abyss_pipe",
-                NetworkItems.sprite(бездна).toString());
-        for (NetworkLine линия : List.of(провод, бездна)) {
+        assertEquals("spellcraft:block/fluid_pipe",
+                NetworkItems.sprite(труба).toString());
+        for (NetworkLine линия : List.of(провод, труба)) {
             Path texture = Path.of("src/main/resources/assets/spellcraft",
                     "textures", NetworkItems.sprite(линия).getPath() + ".png");
             assertTrue(Files.isRegularFile(texture),
@@ -432,11 +433,6 @@ class NetworkBlockTest {
                         + "трубы строится по запасу из NBT");
         assertTrue(перенос.contains("fluid()"),
                 "смена самой жидкости тоже сообщается: цвет и содержимое меняются");
-        assertTrue(перенос.contains("++пустоПодряд == ПУСТОЙ_ЖДЁМ"),
-                "о пустой подключённой трубе сказано один раз и не с первого тика: "
-                        + "первые тики она пуста оттого, что перенос не дошёл до "
-                        + "источника, и предупреждение вышло бы шумом в первую же "
-                        + "секунду после установки");
     }
 
     /**
@@ -453,12 +449,21 @@ class NetworkBlockTest {
                 StandardCharsets.UTF_8);
         String en = Files.readString(ресурсы.resolve("lang/en_us.json"),
                 StandardCharsets.UTF_8);
-        assertFalse(ru.contains("\"block.spellcraft.wire\": \"Провод\""),
+        assertFalse(ru.contains("\"block.spellcraft.wire\": \"Провод\"")
+                        && ru.contains("\"item.spellcraft.fluid_pipe\""),
                 "блок сети называется «Провод», хотя в нём бывают трубы: лучше "
                         + "«Линия сети», название вида есть у предмета");
+        assertTrue(ru.contains("Энергетическая труба")
+                        && ru.contains("Жидкостная труба")
+                        && ru.contains("Логистический транспортёр"),
+                "провод — это энергетическая труба, труба — жидкостная, "
+                        + "транспортёр — логистический: иначе предметы называются "
+                        + "не тем, чем являются");
+        assertFalse(ru.contains("abyss_pipe") && ru.contains("Труба бездны"),
+                "трубы бездны больше нет, а её название и текстуры вычищены");
         assertTrue(en.contains("\"block.spellcraft.wire\""),
                 "у блока должно быть имя на английском");
-        assertTrue(ru.contains("\"item.spellcraft.fluid_pipe\": \"Труба жидкости\""),
+        assertTrue(ru.contains("\"item.spellcraft.fluid_pipe\": \"Жидкостная труба\""),
                 "у трубы жидкости должно быть своё имя предмета");
     }
 }

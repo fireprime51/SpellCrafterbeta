@@ -131,10 +131,10 @@ class WireColorItemsTest {
                 "в ModItems нет предмета-линии WireItem");
         int начало = source.indexOf("class WireItem");
         assertTrue(source.substring(начало).contains("LineKind.ENERGY"),
-                "предмет провода должен класть энергетическую линию");
-        assertTrue(source.contains("class AbyssPipeItem")
-                        && source.contains("LineKind.ABYSS"),
-                "предмет трубы должен класть линию бездны");
+                "предмет энергетической трубы должен класть энергетическую линию");
+        assertTrue(source.contains("class FluidPipeItem")
+                        && source.contains("LineKind.FLUID"),
+                "предмет жидкостной трубы должен класть линию жидкости");
 
         String линия = Files.readString(Path.of(
                 "src/main/java/com/github/fireprime5/spellcraft/network/NetworkItem.java"),

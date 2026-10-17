@@ -47,7 +47,6 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.MODULAR_CHESTPLATE.get());
                         output.accept(ModItems.ABYSS_TANK.get());
                         output.accept(ModItems.DA_ANIMATED.get());
-                        output.accept(ModItems.ABYSS_PIPE.get());
                         output.accept(ModItems.FLUID_PIPE.get());
                         output.accept(ModItems.CONVEYOR.get());
                         // отладочный источник — только по явному ключу в конфиге

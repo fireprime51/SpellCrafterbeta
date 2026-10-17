@@ -30,9 +30,6 @@ public final class ModItems {
      * Отдельного блока трубы больше нет: он занимал целый блок на одну линию и
      * поэтому в одну грань машины влезал только один кабель.
      */
-    public static final Supplier<Item> ABYSS_PIPE = ITEMS.register("abyss_pipe",
-            () -> new AbyssPipeItem(new Item.Properties()));
-
     /** Предмет-блок для бака бездны. */
     public static final Supplier<Item> ABYSS_TANK = ITEMS.register("abyss_tank",
             () -> new BlockItem(ModBlocks.ABYSS_TANK.get(), new Item.Properties()));
@@ -160,14 +157,6 @@ public final class ModItems {
         }
     }
 
-    /** Предмет трубы бездны: тоже кладёт линию, только другого вида. */
-    private static final class AbyssPipeItem extends com.github.fireprime5.spellcraft.network.NetworkItem {
-
-        private AbyssPipeItem(Item.Properties свойства) {
-            super(ModBlocks.WIRE.get(), com.github.fireprime5.spellcraft.network.LineKind.ABYSS,
-                    net.minecraft.world.item.DyeColor.WHITE, свойства);
-        }
-    }
 
     /** Предмет-блок для извлекателя энергии бездны. */
     public static final Supplier<Item> MANA_EXTRACTOR = ITEMS.register("mana_extractor",

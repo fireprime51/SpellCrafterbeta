@@ -1,6 +1,5 @@
 package com.github.fireprime5.spellcraft.network;
 
-import com.github.fireprime5.spellcraft.fluid.AbyssPort;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.DyeColor;
@@ -18,20 +17,20 @@ import java.util.Set;
 /**
  * Одна линия внутри блока сети: провод одного цвета или труба бездны.
  *
- * <p>Линий в блоке до трёх, у каждой свой слот, свой цвет и свой набор
- * подключений. Именно это и даёт то, ради чего всё затевалось: в одну грань
- * машины входят три линии разных цветов и труба — они стоят в разных точках
+ * <p>Линий в блоке до трёх, у каждой свой слот и свой набор подключений. Именно
+ * это и даёт то, ради чего всё затевалось: в одну грань машины входят три линии —
+ * энергетические трубы разных цветов и жидкостная, — и они стоят в разных точках
  * грани и не сливаются.
  *
  * <p>Подключения хранятся битовой маской из шести бит, а не свойствами блока:
  * свойств было бы восемнадцать (три линии по шесть сторон) плюс цвета, и ни один
  * blockstate такое не переживает. Маска живёт в NBT блок-сущности.
  *
- * <p>Сама линия — и хранилище энергии, и порт бездны. Иначе переносу пришлось бы
- * отдельно знать про блок-сущности соседей, а соседом линии может быть и бак, и
- * машина, и вторая линия в том же блоке.
+ * <p>Сама линия — и хранилище энергии, и хранилище жидкости. Иначе переносу
+ * пришлось бы отдельно знать про блок-сущности соседей, а соседом линии может
+ * быть и бак, и машина, и вторая линия в том же блоке.
  */
-public final class NetworkLine implements IEnergyStorage, AbyssPort, IFluidHandler {
+public final class NetworkLine implements IEnergyStorage, IFluidHandler {
 
     private static final String KIND = "kind";
     private static final String COLOR = "color";
@@ -55,7 +54,7 @@ public final class NetworkLine implements IEnergyStorage, AbyssPort, IFluidHandl
      */
     public NetworkLine(LineKind kind, DyeColor color, int mask, int stored) {
         this.kind = kind;
-        this.color = kind == LineKind.ABYSS ? DyeColor.WHITE : color;
+        this.color = color;
         this.mask = mask & NetworkGeometry.ALL_SIDES;
         this.stored = Math.max(0, stored);
     }
@@ -302,51 +301,5 @@ public final class NetworkLine implements IEnergyStorage, AbyssPort, IFluidHandl
         return взято;
     }
 
-    // --- бездна -----------------------------------------------------------
 
-    @Override
-    public int abyssStored() {
-        return stored;
-    }
-
-    @Override
-    public int abyssCapacity() {
-        return NetworkEnergy.CAPACITY;
-    }
-
-    @Override
-    public int abyssReceive(int amount) {
-        if (kind != LineKind.ABYSS || amount <= 0) {
-            return 0;
-        }
-        int room = abyssCapacity() - stored;
-        int добавлено = Math.min(room, amount);
-        stored += Math.max(0, добавлено);
-        return Math.max(0, добавлено);
-    }
-
-    @Override
-    public int abyssExtract(int amount) {
-        if (kind != LineKind.ABYSS || amount <= 0) {
-            return 0;
-        }
-        int взято = Math.min(stored, amount);
-        stored -= взято;
-        return Math.max(0, взято);
-    }
-
-    @Override
-    public boolean abyssAccepts() {
-        return kind == LineKind.ABYSS && stored < abyssCapacity();
-    }
-
-    @Override
-    public boolean abyssProvides() {
-        return kind == LineKind.ABYSS && stored > 0;
-    }
-
-    @Override
-    public String toString() {
-        return kind + "/" + color.getSerializedName() + "/" + Integer.toHexString(mask);
-    }
 }

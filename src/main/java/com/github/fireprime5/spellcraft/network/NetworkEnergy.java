@@ -1,6 +1,5 @@
 package com.github.fireprime5.spellcraft.network;
 
-import com.github.fireprime5.spellcraft.fluid.AbyssPort;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
@@ -15,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Перенос энергии и бездны по линиям блока сети.
+ * Перенос энергии по линиям блока сети.
  *
  * <p>Главное отличие от прежней версии: линий в блоке до трёх, и у соседа нужно
  * спрашивать <b>все</b> линии того же вида и цвета. Раньше в блоке жил ровно один
@@ -104,49 +103,6 @@ public final class NetworkEnergy {
     }
 
     /**
-     * Тик линии бездны: то же правило, но через {@link AbyssPort}.
-     *
-     * <p>Бездна — не Forge Energy, чужие хранилища тут не спрашиваются: она живёт
-     * в трубах и баках мода.
-     */
-    public static void transferAbyss(Level уровень, BlockPos позиция, NetworkLine линия) {
-        int buffer = Math.clamp(линия.abyssStored(), 0, CAPACITY);
-
-        for (Direction d : линия.sides()) {
-            int room = CAPACITY - buffer;
-            if (room <= 0) {
-                break;
-            }
-            AbyssPort from = port(уровень, позиция.relative(d), d);
-            if (from == null || !from.abyssProvides() || from == линия) {
-                continue;
-            }
-            if (from instanceof NetworkLine соседняя && соседняя.sameNetwork(линия)
-                    && соседняя.abyssStored() <= buffer) {
-                continue;
-            }
-            buffer += Math.max(0, from.abyssExtract(Math.min(TRANSFER, room)));
-        }
-        линия.stored(buffer);
-
-        for (Direction d : линия.sides()) {
-            if (линия.abyssStored() <= 0) {
-                break;
-            }
-            AbyssPort to = port(уровень, позиция.relative(d), d);
-            if (to == null || to == линия || !to.abyssAccepts()) {
-                continue;
-            }
-            if (to instanceof NetworkLine соседняя && соседняя.sameNetwork(линия)
-                    && соседняя.abyssStored() >= линия.abyssStored()) {
-                continue;
-            }
-            int принято = to.abyssReceive(Math.min(TRANSFER, линия.abyssStored()));
-            линия.stored(Math.max(0, линия.abyssStored() - Math.max(0, принято)));
-        }
-    }
-
-    /**
      * Забрать из сети, если рядом ничего нет.
      *
      * <p>Потребитель тянет сквозь всю сразу: на hundred-метровой трассе энергия
@@ -229,13 +185,7 @@ public final class NetworkEnergy {
     }
 
     /** Порт бездны в соседе: линия из блока сети или порт машины. */
-    private static AbyssPort port(Level уровень, BlockPos позиция, Direction d) {
-        if (уровень.getBlockEntity(позиция) instanceof NetworkBlockEntity сосед) {
-            NetworkLine линия = сосед.line(LineKind.ABYSS, net.minecraft.world.item.DyeColor.WHITE);
-            return линия != null && линия.connected(d.getOpposite()) ? линия : null;
-        }
-        return уровень.getBlockEntity(позиция) instanceof AbyssPort порт ? порт : null;
-    }
+
 
     /**
      * Энергия чужого блока.

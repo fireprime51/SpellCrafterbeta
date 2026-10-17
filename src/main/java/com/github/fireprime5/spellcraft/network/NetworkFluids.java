@@ -208,28 +208,33 @@ public final class NetworkFluids {
      */
     public static FluidStack взятьУСоседа(Level уровень, BlockPos сосед, Direction d,
                                           NetworkLine линия) {
-        IFluidHandler чужой = capability(уровень, сосед, d);
-        if (чужой != null) {
-            FluidStack есть = чужой.getFluidInTank(0);
-            if (есть.isEmpty() || !линия.isFluidValid(0, есть)) {
+        // источник в мире проверяется первым и в обход capability: у блока воды или
+        // лавы capability есть, но отдать он ничего не может — он не хранилище.
+        // Сначала спрашивать хранилище значило всегда получать пустоту: труба
+        // присоединялась к воде и оставалась пустой
+        var состояние = уровень.getFluidState(сосед);
+        if (!состояние.isEmpty()) {
+            var жидкость = состояние.getType();
+            ResourceLocation id = BuiltInRegistries.FLUID.getKey(жидкость);
+            if (линия.fluid() != null && !линия.fluid().equals(id)) {
                 return FluidStack.EMPTY;
             }
-            return чужой.drain(new FluidStack(есть.getFluid(),
-                    Math.min(TRANSFER, есть.getAmount())), FluidAction.EXECUTE);
+            линия.fluid(id);
+            return new FluidStack(жидкость, TRANSFER);
         }
-        // источник в мире стоит блоком, а не хранилищем: забираем вручную
-        var состояние = уровень.getFluidState(сосед);
-        if (состояние.isEmpty()) {
+        IFluidHandler чужой = capability(уровень, сосед, d);
+        if (чужой == null) {
             return FluidStack.EMPTY;
         }
-        var жидкость = состояние.getType();
-        ResourceLocation id = BuiltInRegistries.FLUID.getKey(жидкость);
-        if (линия.fluid() != null && !линия.fluid().equals(id)) {
+        FluidStack есть = чужой.getFluidInTank(0);
+        if (есть.isEmpty() || !NetworkFluids.принимает(линия,
+                BuiltInRegistries.FLUID.getKey(есть.getFluid()))) {
             return FluidStack.EMPTY;
         }
-        линия.fluid(id);
-        return new FluidStack(жидкость, TRANSFER);
+        return чужой.drain(new FluidStack(есть.getFluid(),
+                Math.min(TRANSFER, есть.getAmount())), FluidAction.EXECUTE);
     }
+
 
     /**
      * Узнать, что за жидкость в линии: у первого соседа, у которого она есть.

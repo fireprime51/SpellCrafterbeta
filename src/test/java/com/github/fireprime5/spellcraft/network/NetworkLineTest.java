@@ -8,6 +8,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -209,11 +214,11 @@ class NetworkLineTest {
     void цветИВидОпределяютСеть() {
         NetworkLine красный = NetworkLine.empty(LineKind.ENERGY, DyeColor.RED);
         NetworkLine синий = NetworkLine.empty(LineKind.ENERGY, DyeColor.BLUE);
-        NetworkLine бездна = NetworkLine.empty(LineKind.ABYSS, DyeColor.WHITE);
+        NetworkLine труба = NetworkLine.empty(LineKind.FLUID, DyeColor.WHITE);
         assertTrue(красный.sameNetwork(NetworkLine.empty(LineKind.ENERGY, DyeColor.RED)),
                 "два красных провода должны быть одной сетью");
         assertFalse(красный.sameNetwork(синий), "провода разных цветов — разные сети");
-        assertFalse(красный.sameNetwork(бездна),
+        assertFalse(красный.sameNetwork(труба),
                 "провод и труба бездны — разные сети");
         assertFalse(красный.sameNetwork(null), "пустой сосед не сеть");
     }
@@ -240,16 +245,17 @@ class NetworkLineTest {
         assertEquals(DyeColor.WHITE, обратно.color());
         assertEquals(0, обратно.mask());
         assertEquals(0, обратно.stored());
-        assertEquals(LineKind.ENERGY, LineKind.byId("бездна"),
+        assertEquals(LineKind.ENERGY, LineKind.byId("труба"),
                 "неизвестное имя вида должно читаться как энергия, а не падать");
     }
 
-    /** У трубы бездны цвета нет: иначе получилось бы шестнадцать одинаковых сетей. */
+    /** У энергетической трубы цвет и есть различие: цветом делятся провода. */
     @Test
-    void уТрубыБездныЦветаНет() {
-        NetworkLine бездна = new NetworkLine(LineKind.ABYSS, DyeColor.MAGENTA, 0, 0);
-        assertEquals(DyeColor.WHITE, бездна.color(),
-                "труба бездны не должна хранить цвет");
+    void уЭнергетическойТрубыЦветЕсть() {
+        NetworkLine труба = new NetworkLine(LineKind.ENERGY, DyeColor.MAGENTA, 0, 0);
+        assertEquals(DyeColor.MAGENTA, труба.color(),
+                "шестнадцать энергетических труб различаются цветом, и он должен "
+                        + "у линии храниться");
     }
 
     /**
@@ -531,15 +537,15 @@ class NetworkLineTest {
     void номерСлотаИщетсяПоЛинии() {
         NetworkLines линии = new NetworkLines();
         линии.add(LineKind.ENERGY, DyeColor.RED);
-        линии.add(LineKind.ABYSS, DyeColor.WHITE);
+        линии.add(LineKind.FLUID, DyeColor.WHITE);
         assertEquals(0, линии.slot(LineKind.ENERGY, DyeColor.RED));
-        assertEquals(1, линии.slot(LineKind.ABYSS, DyeColor.WHITE),
+        assertEquals(1, линии.slot(LineKind.FLUID, DyeColor.WHITE),
                 "у бездны цвет не различает линии");
         assertEquals(-1, линии.slot(LineKind.ENERGY, DyeColor.LIME));
 
         линии.remove(0);
         assertEquals(-1, линии.slot(LineKind.ENERGY, DyeColor.RED), "снятой линии нет");
-        assertEquals(1, линии.slot(LineKind.ABYSS, DyeColor.WHITE),
+        assertEquals(1, линии.slot(LineKind.FLUID, DyeColor.WHITE),
                 "оставшаяся линия не переезжает на освободившийся слот сама");
     }
 
@@ -737,20 +743,46 @@ class NetworkLineTest {
         assertFalse(линии.add(LineKind.FLUID, DyeColor.WHITE),
                 "вторая труба в блок не влезает: предмет один на все жидкости");
         assertTrue(линии.add(LineKind.ENERGY, DyeColor.RED),
-                "провод в блок с трубой всё ещё влезает");
+                "энергетическая труба в блок с жидкостной всё ещё влезает");
         assertEquals(2, линии.count());
         assertEquals(LineKind.FLUID, линии.line(LineKind.FLUID, DyeColor.WHITE).kind());
     }
 
-    /** Труба и труба бездны — разные линии: вид и есть тождество. */
+    /** Энергетическая и жидкостная линии в одном блоке не путаются. */
     @Test
-    void безднаИТрубаНеПутаются() {
+    void энергияИЖидкостьНеПутаются() {
         NetworkLines линии = new NetworkLines();
-        assertTrue(линии.add(LineKind.ABYSS, DyeColor.WHITE));
+        assertTrue(линии.add(LineKind.ENERGY, DyeColor.RED));
         assertTrue(линии.add(LineKind.FLUID, DyeColor.WHITE),
-                "труба жидкости и труба бездны в одном блоке не мешают друг другу");
+                "жидкостная труба и энергетическая в одном блоке не мешают друг другу");
         assertEquals(2, линии.count());
-        assertEquals(LineKind.ABYSS, линии.line(LineKind.ABYSS, DyeColor.WHITE).kind());
+        assertEquals(LineKind.ENERGY, линии.line(LineKind.ENERGY, DyeColor.RED).kind());
         assertEquals(LineKind.FLUID, линии.line(LineKind.FLUID, DyeColor.WHITE).kind());
+    }
+
+    /**
+     * Источник в мире берётся раньше хранилища.
+     *
+     * <p>У блока воды или лавы capability есть, но отдать он ничего не может: он не
+     * хранилище. Сначала спросить хранилище — значит всегда получить пустоту, и труба
+     * присоединялась к воде, оставаясь пустой.
+     */
+    @Test
+    void источникВМиреБерётсяРаньшеХранилища() throws IOException {
+        String перенос = Files.readString(
+                Path.of("src/main/java/com/github/fireprime5/spellcraft/network"
+                        + "/NetworkFluids.java"), StandardCharsets.UTF_8);
+        int начало = перенос.indexOf("public static FluidStack взятьУСоседа");
+        assertTrue(начало > 0, "в переносе должен быть отдельный взятие у соседа");
+        String метод = перенос.substring(начало,
+                перенос.indexOf("\n    }", начало));
+        int источник = метод.indexOf("getFluidState(сосед)");
+        int хранилище = метод.indexOf("capability(уровень, сосед, d)");
+        assertTrue(источник > 0 && хранилище > источник,
+                "блок-источник проверяется раньше capability: у воды capability "
+                        + "есть, но отдать она ничего не может");
+        assertTrue(метод.contains("if (!состояние.isEmpty())"),
+                "проверка источника обязана быть живой: иначе в коде остаётся "
+                        + "чтение жидкости мира, а пользы от него нет");
     }
 }

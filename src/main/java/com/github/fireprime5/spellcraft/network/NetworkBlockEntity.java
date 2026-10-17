@@ -1,7 +1,6 @@
 package com.github.fireprime5.spellcraft.network;
 
 import com.github.fireprime5.spellcraft.Spellcraft;
-import com.github.fireprime5.spellcraft.fluid.AbyssPort;
 import com.github.fireprime5.spellcraft.registry.ModBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -286,9 +285,9 @@ public class NetworkBlockEntity extends BlockEntity {
     /**
      * Соединяется ли линия с блоком в этом направлении.
      *
-     * <p>Три случая: такая же линия в соседнем блоке сети, машина, принимающая
-     * этот вид ресурса, и — для энергии — любой узел сети: провод питает машину
-     * независимо от её цвета.
+     * <p>Два случая: такая же линия в соседнем блоке сети и — для энергии —
+     * любой узел сети: энергетическая труба питает машину независимо от её
+     * цвета. Для жидкости третьим случаем идёт всё, что налито.
      */
     public static boolean connects(Level level, BlockPos pos, Direction d,
                                    LineKind kind, DyeColor color) {
@@ -312,12 +311,9 @@ public class NetworkBlockEntity extends BlockEntity {
         if (kind == LineKind.ENERGY) {
             return блок instanceof NetworkNode;
         }
-        if (kind == LineKind.FLUID) {
-            // труба стыкуется с тем, что налито: с хранилищем и с источником в
-            // мире. Пустой бак и пустой источник — не повод тянуть трубу
-            return NetworkFluids.естьЧемНаполнить(level, pos, d);
-        }
-        return level.getBlockEntity(сосед) instanceof AbyssPort;
+        // труба стыкуется с тем, что налито: с хранилищем и с источником в мире.
+        // Пустой бак и пустой источник — не повод тянуть трубу
+        return NetworkFluids.естьЧемНаполнить(level, pos, d);
     }
 
     // --- форма ------------------------------------------------------------
@@ -386,10 +382,6 @@ public class NetworkBlockEntity extends BlockEntity {
                 переносЖидкости(level, pos, линия);
                 continue;
             }
-            if (линия.kind() == LineKind.ABYSS) {
-                NetworkEnergy.transferAbyss(level, pos, линия);
-                continue;
-            }
             NetworkEnergy.transferEnergy(level, pos, линия);
             long now = level.getGameTime();
             if (now >= nextPullTick) {
@@ -403,15 +395,12 @@ public class NetworkBlockEntity extends BlockEntity {
      * Перенос жидкости и сообщение клиенту о том, что видно.
      *
      * <p>Клиент рисует трубу по запасу из NBT, а перенос меняет запас каждый тик.
-     * Без пакета клиент так и остался бы с пустой трубой: сервер переливал, а
-     * рисовалось ничего — и выглядело это как «труба не работает».
+     * Без пакета клиент остался бы с пустой трубой: сервер переливал, рисовалось
+     * ничего — и выглядело это как «труба не работает».
      *
      * <p>Пакет шлётся не каждый тик, а когда меняется ступень заполнения из
      * четырёх или сама жидкость: картинка от этого меняется, а сеть пустых пакетов
      * в тик на каждый блок — лишняя работа впустую.
-     *
-     * <p>Пустая подключённая труба говорит об этом один раз, но не сразу: первые
-     * тики она пуста оттого, что перенос ещё не успел дойти до источника.
      */
     private void переносЖидкости(Level level, BlockPos pos, NetworkLine линия) {
         ResourceLocation было = линия.fluid();
@@ -421,25 +410,10 @@ public class NetworkBlockEntity extends BlockEntity {
             ступеньЖидкости = ступень;
             sync(level, pos);
         }
-        if (линия.connected() && линия.stored() == 0) {
-            if (++пустоПодряд == ПУСТОЙ_ЖДЁМ) {
-                Spellcraft.LOGGER.warn("Сеть: труба в {} подключена, но за {} тиков "
-                                + "не набрала жидкости: рядом нет ни бака, ни источника",
-                        pos, ПУСТОЙ_ЖДЁМ);
-            }
-        } else {
-            пустоПодряд = 0;
-        }
     }
-
-    /** Сколько тиков пустая труба считается нормальной: перенос не мгновенный. */
-    private static final int ПУСТОЙ_ЖДЁМ = 40;
 
     /** Ступень заполнения, о которой клиенту уже сказали. */
     private int ступеньЖидкости = -1;
-
-    /** Сколько тиков подряд труба подключена и пуста. */
-    private int пустоПодряд;
 
     // --- NBT --------------------------------------------------------------
 
