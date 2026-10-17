@@ -1,5 +1,8 @@
 package com.github.fireprime5.spellcraft.network;
 
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.DyeColor;
 
 import java.util.ArrayList;
@@ -14,24 +17,69 @@ import java.util.List;
  * должно проверяться без мира. Вторая: блок-сущность создаётся только миром, а
  * список линий создаётся чем угодно, и его можно крутить в тестах как обычный
  * объект.
+ *
+ * <p>Слот — это <b>позиция в списке</b>, и она же номер геометрии: 5/16, 8/16 и
+ * 11/16 по {@link NetworkGeometry#OFFSET}. Поэтому список разрежённый: снятая
+ * линия оставляет на своём месте пустоту, а не сдвигает хвост. Прежний
+ * {@code List.remove(int)} сдвигал остальных влево, и после снятия первой линии
+ * вторая и третья въезжали на чужие точки входа в грань: у соседнего блока эта
+ * линия оставалась в прежнем слоте, и на стыке разъезжалось по три пикселя.
+ * Вдобавок {@code hitSlot} начал бы отвечать не за ту линию, которую игрок видит.
+ *
+ * <p>NBT хранит номер слота в каждой записи. Без него чтение файла, сохранённого
+ * плотным списком, снова сдвинул бы линии по слотам.
  */
 public final class NetworkLines {
 
+    /** Ключ списка линий в NBT. */
+    private static final String LINES = "lines";
+
+    /** Ключ номера слота в записи линии. */
+    private static final String SLOT = "slot";
+
+    /** Слоты по порядку; пустые слоты — {@code null}. */
     private final List<NetworkLine> lines = new ArrayList<>(NetworkGeometry.SLOTS);
 
-    /** Сколько линий в блоке. */
+    /** Длина списка: последний занятый слот плюс один. */
     public int size() {
         return lines.size();
     }
 
-    /** Пуст ли блок: пустой блок сети снимается целиком. */
-    public boolean isEmpty() {
-        return lines.isEmpty();
+    /** Сколько линий в блоке на самом деле, без пустых слотов. */
+    public int count() {
+        int n = 0;
+        for (NetworkLine линия : lines) {
+            if (линия != null) {
+                n++;
+            }
+        }
+        return n;
     }
 
-    /** Есть ли свободный слот. */
+    /** Пуст ли блок: пустой блок сети снимается целиком. */
+    public boolean isEmpty() {
+        return count() == 0;
+    }
+
+    /**
+     * Есть ли свободный слот.
+     *
+     * <p>По занятым слотам, а не по длине списка: длина списка — это номер
+     * последнего занятого слота плюс один, и после снятия первой из трёх линий
+     * она равна трём, хотя занято два слота.
+     */
     public boolean hasFreeSlot() {
-        return lines.size() < NetworkGeometry.SLOTS;
+        return count() < NetworkGeometry.SLOTS;
+    }
+
+    /** Номер первого свободного слота или -1. */
+    public int freeSlot() {
+        for (int slot = 0; slot < NetworkGeometry.SLOTS; slot++) {
+            if (slot >= lines.size() || lines.get(slot) == null) {
+                return slot;
+            }
+        }
+        return -1;
     }
 
     /** Линия в слоте или {@code null}, если слот пуст или его нет. */
@@ -47,7 +95,7 @@ public final class NetworkLines {
      */
     public NetworkLine line(LineKind kind, DyeColor color) {
         for (NetworkLine линия : lines) {
-            if (линия.kind() == kind
+            if (линия != null && линия.kind() == kind
                     && (kind == LineKind.ABYSS || линия.color() == color)) {
                 return линия;
             }
@@ -56,7 +104,7 @@ public final class NetworkLines {
     }
 
     /**
-     * Кладёт линию в свободный слот.
+     * Кладёт линию в первый свободный слот.
      *
      * <p>Возвращает {@code false}, если такой линии уже есть или слотов не
      * осталось: молча проглоченный предмет выглядит как поломка, и игрок
@@ -66,28 +114,96 @@ public final class NetworkLines {
         if (!hasFreeSlot() || line(kind, color) != null) {
             return false;
         }
-        lines.add(NetworkLine.empty(kind, color));
+        int slot = freeSlot();
+        while (lines.size() < slot) {
+            lines.add(null);
+        }
+        if (slot >= lines.size()) {
+            lines.add(NetworkLine.empty(kind, color));
+        } else {
+            lines.set(slot, NetworkLine.empty(kind, color));
+        }
         return true;
     }
 
-    /** Заменяет содержимое: так читается NBT, где список приходит целиком. */
+    /**
+     * Заменяет содержимое: так читается NBT, где список приходит целиком.
+     *
+     * <p>Пустые слоты сохраняются на своих местах, хвост из пустот обрезается.
+     */
     public void setAll(List<NetworkLine> новые) {
         lines.clear();
-        for (NetworkLine линия : новые) {
-            if (lines.size() < NetworkGeometry.SLOTS && линия != null) {
-                lines.add(линия);
-            }
+        for (int slot = 0; slot < новые.size() && slot < NetworkGeometry.SLOTS; slot++) {
+            lines.add(новые.get(slot));
         }
+        trim();
     }
 
-    /** Убирает линию из слота. */
+    /**
+     * Убирает линию из слота, оставляя слот на месте.
+     *
+     * <p>Хвостовые пустоты обрезаются, чтобы {@code size()} остался номером
+     * последнего занятого слота плюс один.
+     */
     public NetworkLine remove(int slot) {
-        return slot >= 0 && slot < lines.size() ? lines.remove(slot) : null;
+        if (slot < 0 || slot >= lines.size()) {
+            return null;
+        }
+        NetworkLine снятая = lines.set(slot, null);
+        trim();
+        return снятая;
     }
 
-    /** Все линии: индекс списка и есть номер слота. */
+    /** Все линии по слотам, с пустотами вместо снятых. */
     public List<NetworkLine> all() {
         return Collections.unmodifiableList(lines);
+    }
+
+    /** Записать линии в NBT: у каждой записи есть её номер слота. */
+    public void save(CompoundTag tag) {
+        ListTag список = new ListTag();
+        for (int slot = 0; slot < lines.size(); slot++) {
+            NetworkLine линия = lines.get(slot);
+            if (линия == null) {
+                continue;
+            }
+            CompoundTag запись = линия.save(new CompoundTag());
+            запись.putInt(SLOT, slot);
+            список.add(запись);
+        }
+        tag.put(LINES, список);
+    }
+
+    /**
+     * Прочитать линии из NBT.
+     *
+     * <p>Запись без номера слота — это старый плотный список: её номер считается
+     * по порядку, иначе старые миры поедут по слотам после первого же чтения.
+     */
+    public void load(CompoundTag tag) {
+        ListTag список = tag.getList(LINES, Tag.TAG_COMPOUND);
+        List<NetworkLine> прочитанные = new ArrayList<>(NetworkGeometry.SLOTS);
+        for (int i = 0; i < список.size() && i < NetworkGeometry.SLOTS; i++) {
+            CompoundTag запись = список.getCompound(i);
+            int slot = Math.clamp(запись.contains(SLOT) ? запись.getInt(SLOT) : i,
+                    0, NetworkGeometry.SLOTS - 1);
+            while (прочитанные.size() < slot) {
+                прочитанные.add(null);
+            }
+            if (прочитанные.size() == slot) {
+                прочитанные.add(NetworkLine.load(запись));
+            } else {
+                прочитанные.set(slot, NetworkLine.load(запись));
+            }
+        }
+        setAll(прочитанные);
+    }
+
+    /** Обрезать хвост из пустых слотов. */
+    private void trim() {
+        while (!lines.isEmpty() && lines.get(lines.size() - 1) == null) {
+            lines.remove(lines.size() - 1);
+        }
     }
 
     /** Подписи линий для NBT и отладки: индекс, вид, цвет, маска, запас. */

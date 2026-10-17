@@ -44,9 +44,6 @@ import java.util.List;
  */
 public class NetworkBlockEntity extends BlockEntity {
 
-    /** Ключ списка линий в NBT. */
-    private static final String LINES = "lines";
-
     /** Линии блока: правило «сколько их может быть» живёт в {@link NetworkLines}. */
     private final NetworkLines lines = new NetworkLines();
 
@@ -279,11 +276,7 @@ public class NetworkBlockEntity extends BlockEntity {
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        ListTag список = new ListTag();
-        for (NetworkLine линия : lines.all()) {
-            список.add(линия.save(new CompoundTag()));
-        }
-        tag.put(LINES, список);
+        lines.save(tag);
     }
 
     /**
@@ -329,18 +322,11 @@ public class NetworkBlockEntity extends BlockEntity {
     /**
      * Читает линии из NBT.
      *
-     * <p>Зажим по трём слотам: битый файл или правка руками не должна сделать
-     * блок с девятью линиями, в который потом никто не попадёт.
+     * <p>Формат списка и раскладку по слотам держит сам контейнер: блок-сущности
+     * нечего знать про то, как линия лежит в NBT.
      */
     private void load(CompoundTag tag) {
-        ListTag список = tag.getList(LINES, Tag.TAG_COMPOUND);
-        List<NetworkLine> прочитанные = new ArrayList<>();
-        for (int i = 0; i < список.size(); i++) {
-            прочитанные.add(NetworkLine.load(список.getCompound(i)));
-        }
-        // зажим по трём слотам: битый файл или правка руками не должна сделать
-        // блок с девятью линиями, в который потом никто не попадёт
-        lines.setAll(прочитанные);
+        lines.load(tag);
         setChanged();
     }
 

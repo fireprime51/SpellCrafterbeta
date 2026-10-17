@@ -13,6 +13,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -357,5 +358,120 @@ class NetworkLineTest {
 
     private static int клетка(int x, int y, int z) {
         return (x << 8) | (y << 4) | z;
+    }
+
+    /**
+     * Снятие линии не сдвигает остальных.
+     *
+     * <p>Слот — это номер геометрии (5/16, 8/16, 11/16), и соседний блок про ту же
+     * линию знает по виду и цвету, а не по слоту. Если после снятия первой линии
+     * вторая переехала с 8/16 на 5/16, её точка входа в грань разошлась с
+     * соседним блоком на три пикселя, а снятая по клику линия уже не та.
+     */
+    @Test
+    void снятиеНеСдвигаетОстальныхЛиний() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.add(LineKind.ENERGY, DyeColor.GREEN);
+        assertEquals(DyeColor.RED, линии.remove(0).color(), "снята именно та линия, под которую кликнули");
+
+        assertEquals(3, линии.size(),
+                "длина списка — это номер последнего занятого слота плюс один");
+        assertNull(линии.line(0), "слот 0 должен остаться пустым, а не сдвинуться");
+        assertEquals(DyeColor.BLUE, линии.line(1).color(),
+                "синяя осталась в своём слоте, а не переехала на 5/16");
+        assertEquals(DyeColor.GREEN, линии.line(2).color(),
+                "зелёная осталась в своём слоте");
+        assertEquals(2, линии.count(), "линий осталось две, а не три");
+        assertTrue(линии.hasFreeSlot(), "пустой слот — это свободный слот");
+    }
+
+    /**
+     * Новая линия занимает первый пустой слот, а не следующий по счёту.
+     *
+     * <p>Иначе блок из двух линий в слотах 0 и 2 не влез бы: третья пошла бы в
+     * слот 3, которого нет.
+     */
+    @Test
+    void новаяЛинияЗанимаетПервыйПустойСлот() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.add(LineKind.ENERGY, DyeColor.GREEN);
+        линии.remove(0);
+        assertTrue(линии.add(LineKind.ENERGY, DyeColor.YELLOW));
+        assertEquals(DyeColor.YELLOW, линии.line(0).color(),
+                "освободившийся слот должен занять новая линия");
+        assertFalse(линии.hasFreeSlot(), "все три слота снова заняты");
+    }
+
+    /**
+     * Слоты переживают запись и чтение NBT.
+     *
+     * <p>Если номер слота не писать в NBT, чтение файла снова сдвинет линии: у
+     * блока «красная, пусто, зелёная» после перезагрузки мира зелёная оказалась
+     * бы во втором слоте на 8/16 вместо своего 11/16.
+     */
+    @Test
+    void слотыПереживаютNbt() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.add(LineKind.ENERGY, DyeColor.GREEN);
+        линии.remove(1);
+
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        линии.save(tag);
+
+        NetworkLines после = new NetworkLines();
+        после.load(tag);
+        assertEquals(3, после.size(), "пустой слот не должен обрезаться при записи");
+        assertEquals(DyeColor.RED, после.line(0).color());
+        assertNull(после.line(1), "середина должна остаться пустой");
+        assertEquals(DyeColor.GREEN, после.line(2).color(),
+                "зелёная обязана вернуться в свой слот 11/16");
+    }
+
+    /**
+     * Старый плотный список читается по порядку.
+     *
+     * <p>Миры, сохранённые до появления номеров слотов, лежат без ключа: такой
+     * список нельзя разъезжать, иначе линии поменяются местами после первого
+     * же чтения.
+     */
+    @Test
+    void старыйПлотныйСписокЧитаетсяПоПорядку() {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        net.minecraft.nbt.ListTag список = new net.minecraft.nbt.ListTag();
+        for (DyeColor цвет : new DyeColor[]{DyeColor.RED, DyeColor.BLUE, DyeColor.GREEN}) {
+            список.add(new NetworkLine(LineKind.ENERGY, цвет, 0, 0)
+                    .save(new net.minecraft.nbt.CompoundTag()));
+        }
+        tag.put("lines", список);
+
+        NetworkLines линии = new NetworkLines();
+        линии.load(tag);
+        assertEquals(DyeColor.RED, линии.line(0).color());
+        assertEquals(DyeColor.BLUE, линии.line(1).color());
+        assertEquals(DyeColor.GREEN, линии.line(2).color());
+    }
+
+    /**
+     * Пустой блок сети не считается занятым ни в одном счётчике.
+     *
+     * <p>На этом стоит ранний выход из рендерера и «блок пуст, разбирать его».
+     */
+    @Test
+    void пустойСлотНеСчитаетсяЛинией() {
+        NetworkLines линии = new NetworkLines();
+        линии.add(LineKind.ENERGY, DyeColor.RED);
+        линии.add(LineKind.ENERGY, DyeColor.BLUE);
+        линии.remove(1);
+        assertEquals(1, линии.count());
+        assertFalse(линии.isEmpty());
+        линии.remove(0);
+        assertTrue(линии.isEmpty(), "блок без линий должен считаться пустым");
+        assertEquals(0, линии.size(), "хвост из пустот обрезан");
     }
 }
